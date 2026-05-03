@@ -1,0 +1,5 @@
+{
+  "name": "soma-ehr",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"]
+}

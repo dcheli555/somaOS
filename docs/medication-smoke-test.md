@@ -1,0 +1,131 @@
+# Medication create → update → verify
+
+End-to-end check that **`medications`**, **`medication_history`**, and **`audit_log`** behave as expected.
+
+## Prerequisites
+
+1. **Postgres** running; **`DATABASE_URL`** set (see repo root `.env`).
+2. **Migrations applied** through **`005_audit_log_actor_text`** (and earlier):  
+   `pnpm --filter @soma-ehr/database migrate`
+3. **API running** (e.g. `pnpm --filter @soma-ehr/api dev`) with **`CLERK_PUBLISHABLE_KEY`** and **`CLERK_SECRET_KEY`**.
+4. A **Clerk session JWT** for a test user (**Bearer** token).
+5. A test **`organization_id`** UUID that you will send as **`X-Organization-Id`** and use when inserting the medication (must match).
+
+Optional: run the automated script (see below) after exporting env vars.
+
+---
+
+## 1. Create a medication (SQL)
+
+The API currently exposes **PUT** for updates only, so seed one row with **`psql`** (or any SQL client):
+
+```sql
+-- Use the SAME organization UUID you will send in X-Organization-Id
+INSERT INTO soma_ehr.medications (
+  organization_id,
+  patient_id,
+  medication_display_name,
+  status
+) VALUES (
+  '11111111-1111-4111-8111-111111111111'::uuid,
+  '22222222-2222-4222-8222-222222222222'::uuid,
+  'Acetaminophen 500mg',
+  'active'
+)
+RETURNING id, organization_id, patient_id;
+```
+
+Copy the returned **`id`** as **`MEDICATION_ID`**.
+
+---
+
+## 2. Update via API (curl)
+
+Replace placeholders:
+
+- **`BASE_URL`**: e.g. `http://localhost:3000`
+- **`CLERK_JWT`**: valid `Authorization: Bearer` token
+- **`ORG_ID`**: same UUID as **`organization_id`** in the insert (example uses `11111111-...`)
+- **`MEDICATION_ID`**: UUID from **RETURNING id**
+
+```bash
+curl -sS -X PUT "${BASE_URL}/api/medications/${MEDICATION_ID}" \
+  -H "Authorization: Bearer ${CLERK_JWT}" \
+  -H "X-Organization-Id: ${ORG_ID}" \
+  -H "Content-Type: application/json" \
+  -d '{"medication_display_name":"Acetaminophen 500mg — updated sig"}'
+```
+
+You should get **HTTP 200** and a JSON body with the **updated** medication (new **`updated_at`**, new display name).
+
+**Postman**
+
+- Method: **PUT**
+- URL: `{{baseUrl}}/api/medications/{{medicationId}}`
+- Headers:
+  - `Authorization`: `Bearer {{clerkJwt}}`
+  - `X-Organization-Id`: `{{orgId}}` (UUID, must match row)
+  - `Content-Type`: `application/json`
+- Body (raw JSON), example:
+
+```json
+{
+  "medication_display_name": "Acetaminophen 500mg — updated sig"
+}
+```
+
+---
+
+## 3. Verify in the database
+
+Run with **`psql "$DATABASE_URL"`**, substituting **`MEDICATION_ID`**:
+
+```sql
+-- A) medications row updated
+SELECT id, medication_display_name, updated_at
+FROM soma_ehr.medications
+WHERE id = 'MEDICATION_ID'::uuid;
+
+-- B) medication_history: prior snapshot (should include OLD display name in snapshot JSON)
+SELECT id, medication_id,
+       snapshot->>'medication_display_name' AS snapshot_name,
+       correlation_request_id,
+       created_at
+FROM soma_ehr.medication_history
+WHERE medication_id = 'MEDICATION_ID'::uuid
+ORDER BY created_at DESC;
+
+-- C) audit_log: update event for this medication (request_id + context.requestId + timestamps)
+SELECT id, action, resource_type, resource_id, request_id,
+       "timestamp",
+       context->>'requestId'          AS ctx_request_id,
+       context->>'eventTimestampUtc' AS ctx_event_time_utc_iso
+FROM soma_ehr.audit_log
+WHERE resource_id = 'MEDICATION_ID'::uuid
+ORDER BY recorded_at DESC
+LIMIT 5;
+```
+
+**Expectations**
+
+- **(A)** `medication_display_name` matches the **PUT** body; **`updated_at`** is newer than **`created_at`**.
+- **(B)** At least **one** history row; **`snapshot_name`** is the **previous** label (before update).
+- **(C)** At least one row with **`action` = `update`**, **`resource_type` = `medication`**; **`request_id`** matches **`x-request-id`** semantics and appears again in **`context`** as **`requestId`**; **`eventTimestampUtc`** is UTC ISO-8601.
+
+---
+
+## Automated script
+
+From the **repository root** (requires **`psql`**, **`curl`**, **`DATABASE_URL`**, **`CLERK_JWT`**, **`ORG_ID`**; optional **`PATIENT_ID`**, **`API_BASE`**):
+
+```bash
+export DATABASE_URL='postgres://...'
+export CLERK_JWT='eyJ...'
+export ORG_ID='11111111-1111-4111-8111-111111111111'
+# optional: export PATIENT_ID='22222222-2222-4222-8222-222222222222'
+# optional: export API_BASE='http://localhost:3000'
+
+bash scripts/medication-smoke-test.sh
+```
+
+The script inserts a baseline medication, performs the **PUT**, then prints the three verification queries.
