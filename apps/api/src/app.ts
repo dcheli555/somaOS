@@ -9,8 +9,8 @@ export function createApp() {
 
   app.use(requestContextMiddleware);
   app.use(express.json());
-  app.use(clerkMiddleware());
   app.use(healthRouter);
+  app.use(clerkMiddleware());
   app.use("/api", medicationsApiRouter);
 
   return app;

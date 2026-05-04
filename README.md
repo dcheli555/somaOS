@@ -14,13 +14,64 @@ pnpm monorepo for the Soma EHR project.
 
 - [Node.js](https://nodejs.org/) (LTS recommended)
 - [pnpm](https://pnpm.io/installation) 9+
-- [PostgreSQL](https://www.postgresql.org/) (for database workflows)
+- [PostgreSQL](https://www.postgresql.org/) — local install **or** a container (see [Local development with Docker](#local-development-with-docker))
+
+## Local development with Docker
+
+macOS cannot run Linux containers natively; you need a **container engine** plus the **`docker` CLI**. Pick one:
+
+| Option | Install (Homebrew) | Notes |
+|--------|-------------------|--------|
+| [OrbStack](https://orbstack.dev/) | `brew install --cask orbstack` | Lightweight; Docker-compatible. Open **OrbStack** from Applications and finish first-run setup so the engine runs and CLI tools are installed (often under `~/.orbstack/bin`). |
+| [Docker Desktop](https://docs.docker.com/desktop/install/mac-install/) | `brew install --cask docker` | Official stack. Open **Docker** from Applications so the daemon starts. |
+| Colima + CLI only | `brew install docker docker-compose colima` then `colima start` | No Docker Desktop app; Colima provides the VM and daemon. |
+
+Confirm the CLI talks to the engine:
+
+```bash
+docker version
+```
+
+You should see both **Client** and **Server** sections. If the client is missing entirely (`docker: command not found`), OrbStack usually places `docker` in **`~/.orbstack/bin`** after the app has launched at least once. Add it to your shell `PATH`:
+
+- **zsh** (default Terminal / Cursor): append to `~/.zshrc`  
+  `export PATH="$HOME/.orbstack/bin:$PATH"`
+- **bash**: append to `~/.bash_profile` (or `~/.bashrc` if that is what you source) — same line as above  
+
+Then run `source ~/.zshrc` or `source ~/.bash_profile` and try `docker version` again.
+
+**Fallback:** install only the CLI with Homebrew — `brew install docker` — while OrbStack supplies the daemon. See [OrbStack Docker docs](https://docs.orbstack.dev/docker/) if paths still do not resolve.
+
+**OrbStack + Homebrew `docker` (wrong socket):** if you see an error mentioning **`unix://.../.docker/run/docker.sock`** and **`no such file or directory`**, the CLI expects **Docker Desktop’s** socket, while OrbStack uses **`~/.orbstack/run/docker.sock`**. Ensure **OrbStack is running**, then **`docker context use orbstack`** (check contexts with **`docker context ls`**). If you exported **`DOCKER_HOST`** in **`~/.zshrc`** or **`~/.bash_profile`** to Docker Desktop’s path, **`unset DOCKER_HOST`** or remove it— it overrides contexts.
+
+### Postgres in Docker
+
+Run Postgres on port `5432` with a named volume so data survives container restarts:
+
+```bash
+docker run --name soma-postgres \
+  -e POSTGRES_PASSWORD=localdev \
+  -e POSTGRES_DB=soma_ehr \
+  -p 5432:5432 \
+  -v soma_pgdata:/var/lib/postgresql/data \
+  -d postgres:16
+```
+
+Set `DATABASE_URL` in the repo root `.env` (adjust user/password if you change them):
+
+```text
+postgresql://postgres:localdev@localhost:5432/soma_ehr
+```
+
+Then run [database migrations](#database) (`pnpm --filter @soma-ehr/database migrate`). Stop/remove the container when done: `docker stop soma-postgres` (remove with `docker rm soma-postgres` after stop).
 
 ## Setup
 
 ```bash
 pnpm install
 ```
+
+If Corepack errors with **`EACCES`** when creating **`~/.cache/node/corepack`**, your `~/.cache` directory may be owned by **`root`** (often from a past `sudo` install). Repair ownership with **`sudo chown -R "$(whoami)" ~/.cache`**, or set **`COREPACK_HOME`** to a directory under your home (for example **`$HOME/.local/share/corepack`**) and ensure it exists before running `pnpm` again.
 
 TypeScript packages extend [`tsconfig.base.json`](tsconfig.base.json) at the repo root. The API package overrides module settings for `ts-node-dev` compatibility; the database package uses native ES modules (`"type": "module"`).
 
