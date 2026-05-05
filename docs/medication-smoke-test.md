@@ -25,12 +25,16 @@ INSERT INTO soma_ehr.medications (
   organization_id,
   patient_id,
   medication_name,
-  status
+  status,
+  created_by,
+  updated_by
 ) VALUES (
   '11111111-1111-4111-8111-111111111111'::uuid,
   '22222222-2222-4222-8222-222222222222'::uuid,
   'Acetaminophen 500mg',
-  'active'
+  'active',
+  'manual_seed',
+  'manual_seed'
 )
 RETURNING id, organization_id, patient_id;
 ```

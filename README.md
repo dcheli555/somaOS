@@ -101,7 +101,8 @@ Create a `.env` at the **repository root** (or under `packages/database/` for pa
 | `DATABASE_URL` | `@soma-ehr/database`, `@soma-ehr/api` | Postgres connection string (API uses its own pool for transactional routes) |
 | `PORT` | `@soma-ehr/api` | HTTP port (default `3000`) |
 | `CLERK_PUBLISHABLE_KEY` | `@soma-ehr/api` | Clerk publishable key (JWT verification / middleware; see [Clerk Dashboard](https://dashboard.clerk.com/)) |
-| `CLERK_SECRET_KEY` | `@soma-ehr/api` | Clerk secret key (backend; keep server-side only) |
+| `CLERK_SECRET_KEY` | `@soma-ehr/api` | Clerk secret key (backend; keep server-side only; tenant membership checks call the Clerk Backend API) |
+| `CLERK_ORG_METADATA_TENANT_KEY` | `@soma-ehr/api` | Optional. When **`X-Organization-Id`** is a **UUID**, the API verifies membership by paging the user’s organizations and matching **`public_metadata[<key>]`** on each org (default key **`tenant_uuid`**). Populate that metadata in Clerk (Dashboard or Backend API) so it matches your Postgres **`organization.id`**. Ignored when the header is a Clerk **`org_…`** id. |
 
 Use **`CLERK_PUBLISHABLE_KEY`** and **`CLERK_SECRET_KEY`** in root `.env` for the API. If you still have **`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`** from a Next.js guide, **`apps/api`** maps it onto **`CLERK_PUBLISHABLE_KEY`** when the latter is empty. Restart **`pnpm … api dev`** after changing `.env`. Missing **`CLERK_PUBLISHABLE_KEY`** yields **Publishable key is missing** on **`/api/*`** routes.
 
@@ -134,7 +135,7 @@ Expected: `{"status":"ok"}`. Add `-i` to see response headers, or `-w "\nHTTP %{
 ```bash
 BASE_URL=http://localhost:3000
 CLERK_JWT='eyJ...'   # Clerk session JWT from your test app / dashboard
-ORG_ID='11111111-1111-4111-8111-111111111111'   # UUID; must match the medication row
+ORG_ID='11111111-1111-4111-8111-111111111111'   # Must be a Clerk org id (org_…) the user belongs to, or your internal UUID with matching org `public_metadata[CLERK_ORG_METADATA_TENANT_KEY]`
 MEDICATION_ID='...'  # UUID returned when you seeded the row (see below)
 
 curl -sS -X PUT "${BASE_URL}/api/medications/${MEDICATION_ID}" \
@@ -146,11 +147,11 @@ curl -sS -X PUT "${BASE_URL}/api/medications/${MEDICATION_ID}" \
 
 Full create (SQL) → update (curl) → verify flow: [docs/medication-smoke-test.md](docs/medication-smoke-test.md) and **`scripts/medication-smoke-test.sh`**. Same flow in Postman: [docs/postman/README.md](docs/postman/README.md) — import collection + env, set JWT from **`clerk-dev`**).
 
-**JWT + org id without hand-rolling values:** run [apps/clerk-dev](apps/clerk-dev/README.md) — `pnpm --filter @soma-ehr/clerk-dev dev` — and open **http://localhost:5173** (add that origin in the Clerk Dashboard for the **same** app as `CLERK_PUBLISHABLE_KEY`). Copy the **JWT** and **org UUID** from the page into the curl placeholders above.
+**JWT + org id:** run [apps/clerk-dev](apps/clerk-dev/README.md) — the user needs a valid Clerk session JWT. **`X-Organization-Id`** can be any Clerk organization they belong to (`org_…`) or your internal UUID if the Clerk org **`public_metadata`** maps to that UUID ([Environment variables](#environment-variables)). Active org selection in Clerk only affects routing that still matches `auth.orgId ===` header (`org_…` fast path); other allowed orgs are resolved via Clerk’s Backend API.
 
-Protected routes should use `clerkMiddleware()` (already applied in `createApp`) plus `requireAuthContext` from `src/middleware/auth.ts`, which validates the Clerk session JWT (including `Authorization: Bearer <token>`) and sets `req.authContext.userId`.
+Protected routes use `clerkMiddleware()` (already applied in `createApp`) plus `requireAuthContext` (`src/middleware/auth.ts`), which validates the Clerk session JWT and sets `req.authContext.userId`.
 
-Organization-scoped JSON APIs also require header **`X-Organization-Id`** (UUID), validated in `src/middleware/organizationContext.ts`.
+Organization-scoped APIs require **`X-Organization-Id`** (UUID or Clerk **`org_…`** id; see `src/middleware/organizationContext.ts`) and **`requireTenantMembership`** (`src/middleware/requireTenantMembership.ts`): the authenticated user must be a **member of that tenant** according to Clerk’s **Backend API** — membership on the Clerk org when the header is **`org_…`**, otherwise a membership whose org **`public_metadata`** matches the UUID (see **`CLERK_ORG_METADATA_TENANT_KEY`**). Responses: **403** (`TENANT_ACCESS_DENIED`), **503** (`TENANT_VERIFICATION_UNAVAILABLE`) if Clerk fails with a transient error, or **500** on other verification failures. Integration tests use a stub auth chain **without** tenant membership middleware (`createMedicationsApiRouter` in `src/routes/medications.ts`).
 
 - **Medications:** **`GET /api/medications/:id`** returns the row with **`ETag: "v{version}"`** (integer **`version`** column, not `updated_at`). **`POST /api/medications`** creates (`patient_id`, `medication_name`, optional fields); **`201`** with **`ETag`** / **`Location`**. **`PUT /api/medications/:id`** requires **`If-Match: "v{N}"`** matching current **`version`** (otherwise **`428`** / **`400`** / **`412`** with structured errors); on success increments **`version`** and sets **`updated_at`**, appends **`medication_history`**, writes **`audit_log`**. **`DELETE`** also requires **`If-Match`** and matches on **`version`**; blocked if **`medication_history`** exists (**`409`**). Apply migration **`010_medications_version`** (and **`002`** includes **`version`** on fresh installs).
 

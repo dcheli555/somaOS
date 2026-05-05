@@ -61,10 +61,10 @@ describe.skipIf(!process.env.DATABASE_URL)(
           const {
             rows: [seed],
           } = await client.query<{ id: string }>(
-            `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status)
-             VALUES ($1, $2, $3, 'active')
+            `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
+             VALUES ($1, $2, $3, 'active', $4, $4)
              RETURNING id`,
-            [ORG_A, PATIENT_ID, "Seed medication name"],
+            [ORG_A, PATIENT_ID, "Seed medication name", TEST_ACTOR_USER_ID],
           );
 
           const medicationId = seed!.id;
@@ -133,10 +133,10 @@ describe.skipIf(!process.env.DATABASE_URL)(
           const {
             rows: [seed],
           } = await client.query<{ id: string }>(
-            `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status)
-             VALUES ($1, $2, $3, 'active')
+            `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
+             VALUES ($1, $2, $3, 'active', $4, $4)
              RETURNING id`,
-            [ORG_A, PATIENT_ID, "Version stale seed"],
+            [ORG_A, PATIENT_ID, "Version stale seed", TEST_ACTOR_USER_ID],
           );
           const medicationId = seed!.id;
 
@@ -169,10 +169,10 @@ describe.skipIf(!process.env.DATABASE_URL)(
           const {
             rows: [seed],
           } = await client.query<{ id: string }>(
-            `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status)
-             VALUES ($1, $2, $3, 'active')
+            `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
+             VALUES ($1, $2, $3, 'active', $4, $4)
              RETURNING id`,
-            [ORG_A, PATIENT_ID, "Etag PUT ok"],
+            [ORG_A, PATIENT_ID, "Etag PUT ok", TEST_ACTOR_USER_ID],
           );
           const medicationId = seed!.id;
 
@@ -205,10 +205,10 @@ describe.skipIf(!process.env.DATABASE_URL)(
           const {
             rows: [seed],
           } = await client.query<{ id: string }>(
-            `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status)
-             VALUES ($1, $2, $3, 'active')
+            `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
+             VALUES ($1, $2, $3, 'active', $4, $4)
              RETURNING id`,
-            [ORG_A, PATIENT_ID, "Delete blocked seed"],
+            [ORG_A, PATIENT_ID, "Delete blocked seed", TEST_ACTOR_USER_ID],
           );
           const medicationId = seed!.id;
 
@@ -253,10 +253,10 @@ describe.skipIf(!process.env.DATABASE_URL)(
           const {
             rows: [row],
           } = await pool.query<{ id: string }>(
-            `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status)
-             VALUES ($1, $2, $3, 'active')
+            `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
+             VALUES ($1, $2, $3, 'active', $4, $4)
              RETURNING id`,
-            [ORG_A, PATIENT_ID, "HTTP seed name"],
+            [ORG_A, PATIENT_ID, "HTTP seed name", TEST_ACTOR_USER_ID],
           );
           medicationId = row!.id;
         });
@@ -403,6 +403,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
           .set("X-Organization-Id", ORG_A)
           .set("If-Match", toEtag(1));
         expect(del.status).toBe(204);
+
+        await pool.query(`DELETE FROM soma_ehr.medications WHERE id = $1`, [id]);
       });
 
       it("DELETE returns 428 without If-Match", async () => {
@@ -428,6 +430,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
           .set("X-Organization-Id", ORG_A)
           .set("If-Match", toEtag(1));
         expect(cleanup.status).toBe(204);
+
+        await pool.query(`DELETE FROM soma_ehr.medications WHERE id = $1`, [id]);
       });
 
       it("DELETE returns 412 when If-Match version stale, then succeeds", async () => {
@@ -453,6 +457,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
           .set("X-Organization-Id", ORG_A)
           .set("If-Match", toEtag(1));
         expect(ok.status).toBe(204);
+
+        await pool.query(`DELETE FROM soma_ehr.medications WHERE id = $1`, [id]);
       });
     });
   },

@@ -1,0 +1,18 @@
+-- Canonical clinical row metadata — include on tenant-scoped patient resources (medications, future
+-- problems, allergies, etc.). Domain-specific columns follow this block.
+--
+--   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+--
+--   organization_id UUID NOT NULL,
+--   patient_id UUID NOT NULL,
+--   encounter_id UUID NULL,
+--
+--   "version" INTEGER NOT NULL DEFAULT 1,
+--
+--   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+--   created_by TEXT NOT NULL,
+--   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+--   updated_by TEXT NOT NULL,
+--
+--   deleted_at TIMESTAMPTZ NULL,
+--   deleted_by TEXT NULL

@@ -45,6 +45,7 @@ export interface MedicationRow {
   id: string;
   organization_id: string;
   patient_id: string;
+  encounter_id: string | null;
   rxnorm_cui: string | null;
   ndc_10: string | null;
   ndc_11: string | null;
@@ -61,7 +62,11 @@ export interface MedicationRow {
   metadata: unknown;
   version: number;
   created_at: Date;
+  created_by: string;
   updated_at: Date;
+  updated_by: string;
+  deleted_at: Date | null;
+  deleted_by: string | null;
 }
 
 const bodyFieldToColumn: Record<
@@ -89,6 +94,7 @@ function rowToHistorySnapshot(row: MedicationRow): Record<string, unknown> {
     id: row.id,
     organization_id: row.organization_id,
     patient_id: row.patient_id,
+    encounter_id: row.encounter_id,
     rxnorm_cui: row.rxnorm_cui,
     ndc_10: row.ndc_10,
     ndc_11: row.ndc_11,
@@ -105,7 +111,11 @@ function rowToHistorySnapshot(row: MedicationRow): Record<string, unknown> {
     metadata: row.metadata,
     version: row.version,
     created_at: row.created_at.toISOString(),
+    created_by: row.created_by,
     updated_at: row.updated_at.toISOString(),
+    updated_by: row.updated_by,
+    deleted_at: row.deleted_at?.toISOString() ?? null,
+    deleted_by: row.deleted_by,
   };
 }
 
@@ -114,6 +124,7 @@ export function serializeMedication(row: MedicationRow) {
     id: row.id,
     organization_id: row.organization_id,
     patient_id: row.patient_id,
+    encounter_id: row.encounter_id,
     rxnorm_cui: row.rxnorm_cui,
     ndc_10: row.ndc_10,
     ndc_11: row.ndc_11,
@@ -130,7 +141,11 @@ export function serializeMedication(row: MedicationRow) {
     metadata: row.metadata,
     version: row.version,
     created_at: row.created_at.toISOString(),
+    created_by: row.created_by,
     updated_at: row.updated_at.toISOString(),
+    updated_by: row.updated_by,
+    deleted_at: row.deleted_at?.toISOString() ?? null,
+    deleted_by: row.deleted_by,
   };
 }
 
@@ -199,7 +214,7 @@ export async function updateMedicationForRequest(
   const lock = await client.query<MedicationRow>(
     `SELECT *
      FROM soma_ehr.medications
-     WHERE id = $1
+     WHERE id = $1 AND deleted_at IS NULL
      FOR UPDATE`,
     [medicationId],
   );
@@ -253,20 +268,25 @@ export async function updateMedicationForRequest(
     ],
   );
 
-  const idParam = values.length + 1;
-  const orgParam = values.length + 2;
-  const verParam = values.length + 3;
+  const L = values.length;
+  const updatedByParam = L + 1;
+  const idParam = L + 2;
+  const orgParam = L + 3;
+  const verParam = L + 4;
   const updateSql = `
     UPDATE soma_ehr.medications
     SET ${fragments.join(", ")},
+        "updated_by" = $${updatedByParam},
         "version" = "version" + 1,
         "updated_at" = now()
     WHERE id = $${idParam} AND organization_id = $${orgParam} AND "version" = $${verParam}
+      AND deleted_at IS NULL
     RETURNING *
   `;
 
   const update = await client.query<MedicationRow>(updateSql, [
     ...values,
+    actorUserId,
     medicationId,
     organizationId,
     expectedVersion,

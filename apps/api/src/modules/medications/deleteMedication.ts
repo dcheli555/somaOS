@@ -40,7 +40,7 @@ export async function deleteMedicationForRequest(
   const lock = await client.query<MedicationRow>(
     `SELECT *
      FROM soma_ehr.medications
-     WHERE id = $1
+     WHERE id = $1 AND deleted_at IS NULL
      FOR UPDATE`,
     [medicationId],
   );
@@ -87,10 +87,15 @@ export async function deleteMedicationForRequest(
   }
 
   const del = await client.query<MedicationRow>(
-    `DELETE FROM soma_ehr.medications
-     WHERE id = $1 AND organization_id = $2 AND "version" = $3
+    `UPDATE soma_ehr.medications
+     SET
+       deleted_at = clock_timestamp(),
+       deleted_by = $4,
+       updated_by = $4,
+       "version" = "version" + 1
+     WHERE id = $1 AND organization_id = $2 AND "version" = $3 AND deleted_at IS NULL
      RETURNING *`,
-    [medicationId, organizationId, expectedVersion],
+    [medicationId, organizationId, expectedVersion, actorUserId],
   );
 
   const deleted = del.rows[0];

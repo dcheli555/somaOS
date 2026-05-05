@@ -1,7 +1,16 @@
 import type { RequestHandler } from "express";
 import { z } from "zod";
 
-const orgHeaderSchema = z.string().uuid();
+/** Tenant key: internal UUID (postgres) or Clerk organization id (`org_…`). */
+const orgHeaderSchema = z.union([
+  z.string().uuid(),
+  z
+    .string()
+    .regex(
+      /^org_[A-Za-z0-9]+$/,
+      "must be a UUID or Clerk organization id (org_…)",
+    ),
+]);
 
 /**
  * Requires `X-Organization-Id` (tenant) on the request and aligns `req.context.organizationId`.
@@ -19,7 +28,7 @@ export const requireOrganizationContext: RequestHandler = (req, res, next) => {
   const parsed = orgHeaderSchema.safeParse(raw.trim());
   if (!parsed.success) {
     res.status(400).json({
-      error: "Invalid X-Organization-Id (expected UUID)",
+      error: "Invalid X-Organization-Id (expected UUID or Clerk org id org_…)",
     });
     return;
   }

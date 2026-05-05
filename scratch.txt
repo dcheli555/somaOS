@@ -1,0 +1,156 @@
+11111111-1111-4111-8111-111111111111
+
+
+eyJhbGciOiJSUzI1NiIsImNhdCI6ImNsX0I3ZDRQRDExMUFBQSIsImtpZCI6Imluc18zREdWVE1LWm5CN1lqUkxGSWM4ekVIcDlFZGciLCJ0eXAiOiJKV1QifQ.eyJhenAiOiJodHRwOi8vbG9jYWxob3N0OjUxNzMiLCJleHAiOjE3Nzc5MzczNDUsImZ2YSI6WzAsLTFdLCJpYXQiOjE3Nzc5MzcyODUsImlzcyI6Imh0dHBzOi8vYWJvdmUtamFndWFyLTU5LmNsZXJrLmFjY291bnRzLmRldiIsIm5iZiI6MTc3NzkzNzI3NSwic2lkIjoic2Vzc18zREhTMUVkNkkxOEZBcldlcko4UWd3cXBhSDciLCJzdHMiOiJhY3RpdmUiLCJzdWIiOiJ1c2VyXzNESFMxM2tvaU5ZUXVGTFBnWFA0Zk1DaFpRSSIsInYiOjJ9.AOPLQfmP7hE1NgsFI6lIpIhcD1lqhywHoezv9rZSVvidUhSrJQhVO6kScPNXvbYLXaaaGqbf7DCccotY0Q5grQtWM5wNTEuUHH7w9c7E_zx-zS-wR9UH6GJDQGWsswOxuQ2NL8yUyzzYHsr-c0PMyar3GJK7mPB4A86za_0z7FLMe8n-ZW8wDs4VEwRF9Lbs2pYrRFfanj-KOClnQABiq1Eb0SqD0aUcxXtSbHHFYbvXqqeWWHQaWHZG-3b2mZlYVJGUjd4F36glWN_Bqj2ZvNuv7v6LKjv-mCdMz1qQ-wfTktGKhrD4ZsLuuRA0It2GIHOXv20NvavaiIwI2UDa0Q
+
+
+
+
+
+
+INSERT INTO soma_ehr.medications (
+  organization_id,
+  patient_id,
+  medication_display_name,
+  strength,
+  route,
+  form
+  status
+) VALUES (
+  '11111111-1111-4111-8111-111111111111'::uuid,
+  '22222222-2222-4222-8222-222222222222'::uuid,
+  'Acetaminophen 500mg',
+  'active'
+)
+RETURNING id, organization_id, patient_id;
+
+
+Medication,Strength,Route,Form
+Acetaminophen,500 mg,Oral,Tablet
+Ibuprofen,200 mg,Oral,Tablet
+Lisinopril,20 mg,Oral,Tablet
+Metformin,500 mg,Oral,Tablet
+Amoxicillin,500 mg,Oral,Capsule
+Atorvastatin,20 mg,Oral,Tablet
+Omeprazole,20 mg,Oral,Capsule
+Sertraline,50 mg,Oral,Tablet
+Albuterol,90 mcg/actuation,Inhalation,Inhaler
+Loratadine,10 mg,Oral,Tablet
+
+
+
+INSERT INTO soma_ehr.medications (
+  organization_id,
+  patient_id,
+  medication_name,
+  strength,
+  route,
+  form,
+  status
+) VALUES
+(
+  '11111111-1111-4111-8111-111111111111'::uuid,
+  '22222222-2222-4222-8222-222222222222'::uuid,
+  'Acetaminophen 500 mg',
+  '500 mg',
+  'Oral',
+  'Tablet',
+  'active'
+),
+(
+  '11111111-1111-4111-8111-111111111111'::uuid,
+  '22222222-2222-4222-8222-222222222222'::uuid,
+  'Ibuprofen 200 mg',
+  '200 mg',
+  'Oral',
+  'Tablet',
+  'active'
+),
+(
+  '11111111-1111-4111-8111-111111111111'::uuid,
+  '22222222-2222-4222-8222-222222222222'::uuid,
+  'Lisinopril 20 mg',
+  '20 mg',
+  'Oral',
+  'Tablet',
+  'active'
+),
+(
+  '11111111-1111-4111-8111-111111111111'::uuid,
+  '22222222-2222-4222-8222-222222222222'::uuid,
+  'Metformin 500 mg',
+  '500 mg',
+  'Oral',
+  'Tablet',
+  'active'
+),
+(
+  '11111111-1111-4111-8111-111111111111'::uuid,
+  '22222222-2222-4222-8222-222222222222'::uuid,
+  'Amoxicillin 500 mg',
+  '500 mg',
+  'Oral',
+  'Capsule',
+  'active'
+),
+(
+  '11111111-1111-4111-8111-111111111111'::uuid,
+  '22222222-2222-4222-8222-222222222222'::uuid,
+  'Atorvastatin 20 mg',
+  '20 mg',
+  'Oral',
+  'Tablet',
+  'active'
+),
+(
+  '11111111-1111-4111-8111-111111111111'::uuid,
+  '22222222-2222-4222-8222-222222222222'::uuid,
+  'Omeprazole 20 mg',
+  '20 mg',
+  'Oral',
+  'Capsule',
+  'active'
+),
+(
+  '11111111-1111-4111-8111-111111111111'::uuid,
+  '22222222-2222-4222-8222-222222222222'::uuid,
+  'Sertraline 50 mg',
+  '50 mg',
+  'Oral',
+  'Tablet',
+  'active'
+),
+(
+  '11111111-1111-4111-8111-111111111111'::uuid,
+  '22222222-2222-4222-8222-222222222222'::uuid,
+  'Albuterol 90 mcg/actuation',
+  '90 mcg/actuation',
+  'Inhalation',
+  'Inhaler',
+  'active'
+),
+(
+  '11111111-1111-4111-8111-111111111111'::uuid,
+  '22222222-2222-4222-8222-222222222222'::uuid,
+  'Loratadine 10 mg',
+  '10 mg',
+  'Oral',
+  'Tablet',
+  'active'
+)
+RETURNING id, organization_id, patient_id;
+
+78afe1a2-b9dc-4ab8-8d1d-de30d2265460 | 11111111-1111-4111-8111-111111111111 | 22222222-2222-4222-8222-222222222222
+ bea354aa-7f04-40b9-87a8-9d9f89dd3d65 | 11111111-1111-4111-8111-111111111111 | 22222222-2222-4222-8222-222222222222
+ e8f52c89-ca5f-4387-b993-0f9b4bbc7c32 | 11111111-1111-4111-8111-111111111111 | 22222222-2222-4222-8222-222222222222
+ 8da9baf5-7b22-43b8-92cb-77873cd1d236 | 11111111-1111-4111-8111-111111111111 | 22222222-2222-4222-8222-222222222222
+ e80f26c7-31b8-4e53-be41-35e36a5c5809 | 11111111-1111-4111-8111-111111111111 | 22222222-2222-4222-8222-222222222222
+ d449941e-7c01-4d18-9b05-4ae5cff18350 | 11111111-1111-4111-8111-111111111111 | 22222222-2222-4222-8222-222222222222
+ 7580bd6a-20b4-41fd-8b47-48aa90ed0aa4 | 11111111-1111-4111-8111-111111111111 | 22222222-2222-4222-8222-222222222222
+ 55b736d4-34c7-4b4b-897f-df05690a1d6b | 11111111-1111-4111-8111-111111111111 | 22222222-2222-4222-8222-222222222222
+ 894676a5-ea24-4c88-a448-c427dad3aea7 | 11111111-1111-4111-8111-111111111111 | 22222222-2222-4222-8222-222222222222
+ 0051d75e-3f66-47d7-ab87-ea47f07e55d4
+
+
+  7dde986a-a550-43bb-8616-6b736efe1b50 | 11111111-1111-4111-8111-111111111111 | bea354aa-7f04-40b9-87a8-9d9f89dd3d65 | {"id": "bea354aa-7f04-40b9-87a8-9d9f89dd3d65", "form": "Tablet", "route": "Oral", "end_at": null, "ndc_10": null, "ndc_11": null, "status": "active", "metadata": {}, "sig_text": null, "start_at": null, "strength": "200 mg", "dose_text": null, "created_at": "2026-05-05T18:04:25.797Z", "patient_id": "22222222-2222-4222-8222-222222222222", "rxnorm_cui": null, "updated_at": "2026-05-05T18:04:25.797Z", "frequency_text": null, "medication_name": "Ibuprofen 200 mg", "organization_id": "11111111-1111-4111-8111-111111111111"} |                       1 |               | 4e80fdcc-1bf8-4e2b-88f3-81033361eaf1 | 2026-05-05 18:29:04.368774+00 | 2026-05-05 18:29:04
+.368774+00

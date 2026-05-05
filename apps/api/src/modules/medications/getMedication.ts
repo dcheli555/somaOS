@@ -14,7 +14,7 @@ async function fetchMedicationRow(
   const { rows } = await pool.query<MedicationRow>(
     `SELECT *
      FROM soma_ehr.medications
-     WHERE id = $1 AND organization_id = $2`,
+     WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL`,
     [params.medicationId, params.organizationId],
   );
   return rows[0] ?? null;

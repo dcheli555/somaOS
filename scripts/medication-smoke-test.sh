@@ -14,8 +14,8 @@ PATIENT_ID="${PATIENT_ID:-22222222-2222-4222-8222-222222222222}"
 echo "Inserting baseline medication (org=${ORG_ID}, patient=${PATIENT_ID})..."
 MED_ID="$(
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAc \
-    "INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status)
-     VALUES ('${ORG_ID}'::uuid, '${PATIENT_ID}'::uuid, 'Smoke baseline med', 'active')
+    "INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
+     VALUES ('${ORG_ID}'::uuid, '${PATIENT_ID}'::uuid, 'Smoke baseline med', 'active', 'smoke_test_user', 'smoke_test_user')
      RETURNING id;" | tr -d ' '
 )"
 

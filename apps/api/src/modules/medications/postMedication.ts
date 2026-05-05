@@ -17,6 +17,7 @@ import { sendMedicationApiError } from "./medicationApiError";
 export const medicationCreateBodySchema = z
   .object({
     patient_id: z.string().uuid(),
+    encounter_id: z.string().uuid().nullable().optional(),
     medication_name: z.string().min(1),
   })
   .merge(medicationUpdateBodySchema.omit({ medication_name: true }))
@@ -49,6 +50,7 @@ export async function createMedicationForRequest(
     `INSERT INTO soma_ehr.medications (
        organization_id,
        patient_id,
+       encounter_id,
        medication_name,
        rxnorm_cui,
        ndc_10,
@@ -62,16 +64,20 @@ export async function createMedicationForRequest(
        status,
        start_at,
        end_at,
-       metadata
+       metadata,
+       created_by,
+       updated_by
      ) VALUES (
-       $1, $2, $3,
-       $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
-       $14, $15, $16::jsonb
+       $1, $2, $3, $4,
+       $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+       $15, $16, $17::jsonb,
+       $18, $19
      )
      RETURNING *`,
     [
       organizationId,
       body.patient_id,
+      body.encounter_id === undefined ? null : body.encounter_id ?? null,
       body.medication_name,
       body.rxnorm_cui ?? null,
       body.ndc_10 ?? null,
@@ -94,6 +100,8 @@ export async function createMedicationForRequest(
           ? null
           : new Date(body.end_at),
       body.metadata ?? {},
+      actorUserId,
+      actorUserId,
     ],
   );
 
