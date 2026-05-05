@@ -5,6 +5,7 @@ import { withTransaction } from "../../db/pool";
 import {
   buildAuditRequestFromExpress,
   insertAuditEvent,
+  auditPayloadHash,
 } from "../../services/auditService";
 import { parseIfMatch, toEtag } from "./etag";
 import { appendMedicationHistory } from "./medicationHistory";
@@ -303,11 +304,16 @@ export async function updateMedicationForRequest(
       requestId,
     }),
     event: {
+      eventType: "medication.update",
+      action: "update",
+      outcome: "success",
       resourceType: "medication",
       resourceId: updated.id,
-      action: "update",
       patientId: updated.patient_id,
+      encounterId: updated.encounter_id ?? null,
       occurredAtIso: eventTime.toISOString(),
+      previousValueHash: auditPayloadHash(medicationRowToSnapshot(current)),
+      newValueHash: auditPayloadHash(medicationRowToSnapshot(updated)),
     },
     metadata: {
       schemaVersion: 1,

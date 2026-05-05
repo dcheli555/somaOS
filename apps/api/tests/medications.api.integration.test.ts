@@ -129,15 +129,19 @@ describe.skipIf(!process.env.DATABASE_URL)(
             action: string;
             resource_type: string;
             resource_id: string;
+            outcome: string;
+            event_type: string;
           }>(
-            `SELECT action, resource_type, resource_id
+            `SELECT action, resource_type, resource_id, outcome, event_type
              FROM soma_ehr.audit_log
              WHERE resource_id = $1
-             ORDER BY recorded_at DESC
+             ORDER BY "timestamp" DESC
              LIMIT 1`,
             [medicationId],
           );
           expect(audit!.action).toBe("update");
+          expect(audit!.outcome).toBe("success");
+          expect(audit!.event_type).toBe("medication.update");
 
           await client.query("ROLLBACK");
         } catch (err) {
@@ -435,12 +439,19 @@ describe.skipIf(!process.env.DATABASE_URL)(
 
         const {
           rows: [audit],
-        } = await pool.query<{ action: string; context: { domain?: string } }>(
-          `SELECT action, context FROM soma_ehr.audit_log
-           WHERE resource_id = $1 ORDER BY recorded_at DESC LIMIT 1`,
+        } = await pool.query<{
+          action: string;
+          outcome: string;
+          event_type: string;
+          metadata: { domain?: string } | null;
+        }>(
+          `SELECT action, outcome, event_type, metadata FROM soma_ehr.audit_log
+           WHERE resource_id = $1 ORDER BY "timestamp" DESC LIMIT 1`,
           [id],
         );
         expect(audit!.action).toBe("create");
+        expect(audit!.outcome).toBe("success");
+        expect(audit!.event_type).toBe("medication.create");
 
         const del = await request(app)
           .delete(`/api/medications/${id}`)

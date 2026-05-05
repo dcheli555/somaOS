@@ -99,14 +99,13 @@ FROM soma_ehr.medication_history
 WHERE medication_id = 'MEDICATION_ID'::uuid
 ORDER BY created_at DESC;
 
--- C) audit_log: update event for this medication (request_id + context.requestId + timestamps)
-SELECT id, action, resource_type, resource_id, request_id,
+-- C) audit_log: update event (outcome, event_type, metadata)
+SELECT id, event_type, action, outcome, resource_type, resource_id, request_id,
        "timestamp",
-       context->>'requestId'          AS ctx_request_id,
-       context->>'eventTimestampUtc' AS ctx_event_time_utc_iso
+       metadata->>'domain' AS metadata_domain
 FROM soma_ehr.audit_log
 WHERE resource_id = 'MEDICATION_ID'::uuid
-ORDER BY recorded_at DESC
+ORDER BY "timestamp" DESC
 LIMIT 5;
 ```
 
@@ -114,7 +113,7 @@ LIMIT 5;
 
 - **(A)** `medication_name` matches the **PUT** body; **`updated_at`** is newer than **`created_at`**.
 - **(B)** At least **one** history row; **`snapshot_name`** is the **previous** label (before update).
-- **(C)** At least one row with **`action` = `update`**, **`resource_type` = `medication`**; **`request_id`** matches **`x-request-id`** semantics and appears again in **`context`** as **`requestId`**; **`eventTimestampUtc`** is UTC ISO-8601.
+- **(C)** At least one row with **`action` = `update`**, **`event_type` = `medication.update`**, **`outcome` = `success`**, **`resource_type` = `medication`**; **`request_id`** ties to **`x-request-id`**.
 
 ---
 

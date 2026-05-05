@@ -60,18 +60,16 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
    ORDER BY created_at DESC;"
 
 echo ""
-echo "=== Verification: audit_log (expect action=update, resource=medication) ==="
+echo "=== Verification: audit_log (expect event_type=medication.update, outcome=success) ==="
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
-  "SELECT action, resource_type, resource_id, request_id,
-          context->>'requestId' AS ctx_request_id,
-          context->>'eventTimestampUtc' AS event_utc_iso
+  "SELECT event_type, action, outcome, resource_type, resource_id, request_id,
+          \"timestamp\",
+          metadata->>'domain' AS metadata_domain
    FROM soma_ehr.audit_log
    WHERE resource_id = '${MED_ID}'::uuid
-   ORDER BY recorded_at DESC
+   ORDER BY \"timestamp\" DESC
    LIMIT 5;"
 
 echo ""
-echo "Done. Clean up test rows (history first — FK to medications):"
-echo "  psql \"\$DATABASE_URL\" -c \"DELETE FROM soma_ehr.medication_history WHERE medication_id = '${MED_ID}'::uuid;\""
-echo "  psql \"\$DATABASE_URL\" -c \"DELETE FROM soma_ehr.audit_log WHERE resource_id = '${MED_ID}'::uuid;\""
+echo "Done. Clean up test medication (cascades medication_history; audit_log is append-only):"
 echo "  psql \"\$DATABASE_URL\" -c \"DELETE FROM soma_ehr.medications WHERE id = '${MED_ID}'::uuid;\""

@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { DbClient } from "../../db/pool";
 import { withTransaction } from "../../db/pool";
 import {
+  auditPayloadHash,
   buildAuditRequestFromExpress,
   insertAuditEvent,
 } from "../../services/auditService";
@@ -107,11 +108,16 @@ export async function deleteMedicationForRequest(
       requestId,
     }),
     event: {
+      eventType: "medication.delete",
+      action: "delete",
+      outcome: "success",
       resourceType: "medication",
       resourceId: deleted.id,
-      action: "delete",
       patientId: deleted.patient_id,
+      encounterId: row.encounter_id ?? null,
       occurredAtIso: eventTime.toISOString(),
+      previousValueHash: auditPayloadHash(medicationRowToSnapshot(row)),
+      newValueHash: auditPayloadHash(medicationRowToSnapshot(deleted)),
     },
     metadata: {
       schemaVersion: 1,

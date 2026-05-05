@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { DbClient } from "../../db/pool";
 import { withTransaction } from "../../db/pool";
 import {
+  auditPayloadHash,
   buildAuditRequestFromExpress,
   insertAuditEvent,
 } from "../../services/auditService";
@@ -133,11 +134,15 @@ export async function createMedicationForRequest(
       requestId,
     }),
     event: {
+      eventType: "medication.create",
+      action: "create",
+      outcome: "success",
       resourceType: "medication",
       resourceId: row.id,
-      action: "create",
       patientId: row.patient_id,
+      encounterId: row.encounter_id ?? null,
       occurredAtIso: eventTime.toISOString(),
+      newValueHash: auditPayloadHash(medicationRowToSnapshot(row)),
     },
     metadata: {
       schemaVersion: 1,

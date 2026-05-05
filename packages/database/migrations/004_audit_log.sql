@@ -1,71 +1,57 @@
--- Enterprise / HIPAA-oriented audit trail: non-repudiation-oriented, query-optimized, append-only.
--- Captures who did what to which clinical entity, under which tenant and request correlation.
+-- Security / clinical audit trail: append-only, query-optimized.
 
 CREATE TABLE soma_ehr.audit_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-  organization_id UUID NOT NULL,
-  patient_id UUID,
+  "timestamp" TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-  actor_user_id UUID NOT NULL,
+  event_type TEXT NOT NULL,
+  action TEXT NOT NULL,
+  outcome TEXT NOT NULL,
+
+  actor_user_id TEXT NULL,
+  actor_role TEXT NULL,
+
+  organization_id UUID NOT NULL,
+  site_id UUID NULL,
+  patient_id UUID NULL,
+  encounter_id UUID NULL,
 
   resource_type TEXT NOT NULL,
-  resource_id UUID,
+  resource_id UUID NULL,
 
-  action TEXT NOT NULL,
+  reason TEXT NULL,
 
   request_id TEXT NOT NULL,
+  session_id TEXT NULL,
+  source_ip INET NULL,
+  user_agent TEXT NULL,
 
-  -- Required semantic event time (business / application clock for the audited action).
-  "timestamp" TIMESTAMPTZ NOT NULL,
+  api_client_id TEXT NULL,
+  scopes TEXT[] NULL,
 
-  -- Server ingest time (when the audit row was persisted). Immutable once written.
-  recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  previous_value_hash TEXT NULL,
+  new_value_hash TEXT NULL,
 
-  -- Additional non-PHI context (e.g. API path, safe reason codes). Avoid raw PHI in payloads.
-  context JSONB NOT NULL DEFAULT '{}'::jsonb,
-
-  -- Optional client / session forensics (storage policy-dependent).
-  actor_ip INET,
-  user_agent TEXT,
-  session_id TEXT,
+  metadata JSONB NULL,
 
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-  CONSTRAINT audit_log_resource_type_non_empty
-    CHECK (length(trim(resource_type)) > 0),
-
-  CONSTRAINT audit_log_action_non_empty
-    CHECK (length(trim(action)) > 0),
-
-  CONSTRAINT audit_log_request_id_non_empty
-    CHECK (length(trim(request_id)) > 0),
-
-  CONSTRAINT audit_log_context_is_object
-    CHECK (jsonb_typeof(context) = 'object')
+  CONSTRAINT audit_log_outcome_check
+    CHECK (outcome IN ('success', 'failure', 'denied'))
 );
 
 COMMENT ON TABLE soma_ehr.audit_log IS
-  'Organization-scoped security and clinical audit log; append-only. patient_id nullable for non-patient-scoped events.';
+  'Append-only audit log; outcome records success vs authorization / technical failure.';
 
 COMMENT ON COLUMN soma_ehr.audit_log."timestamp" IS
-  'When the audited action occurred in application time (distinct from recorded_at / row persistence).';
+  'When the audited event occurred in application time.';
 
-COMMENT ON COLUMN soma_ehr.audit_log.recorded_at IS
-  'Database ingest timestamp for this audit row (WORM semantics).';
+COMMENT ON COLUMN soma_ehr.audit_log.event_type IS
+  'Stable category for filtering (e.g. medication.create, medication.update).';
 
-COMMENT ON COLUMN soma_ehr.audit_log.resource_type IS
-  'Logical type of target resource (e.g. medication, encounter, document).';
-
-COMMENT ON COLUMN soma_ehr.audit_log.resource_id IS
-  'Identifier of the target resource instance, when applicable.';
-
-COMMENT ON COLUMN soma_ehr.audit_log.request_id IS
-  'End-to-end request correlation id (e.g. x-request-id) tying the event to middleware / API logs.';
-
-COMMENT ON COLUMN soma_ehr.audit_log.actor_user_id IS
-  'Authenticated principal that performed the action (or delegated service account id).';
+COMMENT ON COLUMN soma_ehr.audit_log.metadata IS
+  'Optional structured context (paths, semantic version tags); avoid raw PHI.';
 
 CREATE INDEX idx_audit_log_org_timestamp
   ON soma_ehr.audit_log (organization_id, "timestamp" DESC);
@@ -78,15 +64,15 @@ CREATE INDEX idx_audit_log_org_resource
   ON soma_ehr.audit_log (organization_id, resource_type, resource_id);
 
 CREATE INDEX idx_audit_log_org_actor_timestamp
-  ON soma_ehr.audit_log (organization_id, actor_user_id, "timestamp" DESC);
+  ON soma_ehr.audit_log (organization_id, actor_user_id, "timestamp" DESC)
+  WHERE actor_user_id IS NOT NULL;
 
 CREATE INDEX idx_audit_log_request_id
   ON soma_ehr.audit_log (request_id);
 
-CREATE INDEX idx_audit_log_recorded_at
-  ON soma_ehr.audit_log (recorded_at DESC);
+CREATE INDEX idx_audit_log_created_at
+  ON soma_ehr.audit_log (created_at DESC);
 
--- Immutable audit store: updates and deletes break compliance expectations.
 CREATE OR REPLACE FUNCTION soma_ehr.tg_prevent_audit_log_mutation()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -108,9 +94,3 @@ CREATE TRIGGER trg_audit_log_prevent_delete
   BEFORE DELETE ON soma_ehr.audit_log
   FOR EACH ROW
   EXECUTE PROCEDURE soma_ehr.tg_prevent_audit_log_mutation();
-
--- updated_at is required by schema; on insert align with server clock.
-CREATE TRIGGER trg_audit_log_set_updated_at_on_insert
-  BEFORE INSERT ON soma_ehr.audit_log
-  FOR EACH ROW
-  EXECUTE PROCEDURE soma_ehr.tg_set_updated_at();
