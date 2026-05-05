@@ -1,10 +1,14 @@
 import { Router, type RequestHandler } from "express";
 import { requireAuthContext } from "../middleware/auth";
 import { requireOrganizationContext } from "../middleware/organizationContext";
+import { deleteMedicationHandler } from "../modules/medications/deleteMedication";
+import { postMedicationHandler } from "../modules/medications/postMedication";
 import { putMedicationHandler } from "../modules/medications/putMedication";
 
 function medicationResourceRouter(): Router {
   const router = Router();
+  router.post("/medications", postMedicationHandler);
+  router.delete("/medications/:id", deleteMedicationHandler);
   router.put("/medications/:id", putMedicationHandler);
   return router;
 }

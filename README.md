@@ -6,7 +6,7 @@ pnpm monorepo for the Soma EHR project.
 
 | Path | Package | Role |
 |------|---------|------|
-| `apps/api` | `@soma-ehr/api` | HTTP API (Express, TypeScript) |
+| `apps/api` | `@soma-ehr/api` | HTTP API (Express, TypeScript); integration tests **`pnpm --filter @soma-ehr/api test`** (`DATABASE_URL` + migrated DB) |
 | `apps/clerk-dev` | `@soma-ehr/clerk-dev` | Minimal Vite + Clerk UI for **JWT** and **`X-Organization-Id`** (Phase 3 / curl testing) |
 | `packages/database` | `@soma-ehr/database` | Postgres client, SQL migrations |
 | `packages/shared` | `@soma-ehr/shared` | Shared types and utilities |
@@ -152,7 +152,7 @@ Protected routes should use `clerkMiddleware()` (already applied in `createApp`)
 
 Organization-scoped JSON APIs also require header **`X-Organization-Id`** (UUID), validated in `src/middleware/organizationContext.ts`.
 
-- **Medications:** `PUT /api/medications/:id` — authenticated, tenant-isolated update. Required name field in DB is **`medication_name`** (renamed from `medication_display_name` in **`009_medications_rename_display_name`**). Nullable fields include **`ndc_10`** / **`ndc_11`** (`006_medications_ndc_10`), **`form`** (`007_medications_form`), and **`strength`** (`008_medications_strength`). Runs in a single DB transaction: locks row, writes prior state to `medication_history`, updates `medications`, inserts `audit_log`, returns the updated row. Requires `DATABASE_URL` and migrations through **`009_medications_rename_display_name`** (apply all pending `packages/database/migrations/`).
+- **Medications:** **`POST /api/medications`** creates a tenant-scoped medication (`patient_id`, `medication_name`, optional fields same shape as PATCH); **`201`** with **`ETag`** and **`Location`**. **`PUT /api/medications/:id`** updates in one transaction (prior snapshot in **`medication_history`**, **`audit_log`**). **`DELETE`** removes **only if** the medication has **no** **`medication_history`** (**`409`** once any update existed). **`If-Match`** header is optional; when present it must equal the **`ETag`** (**`updated_at` as epoch ms**) or the server responds **`412`**. **`ETag`** is returned on **POST** and **PUT**. Naming and nullable columns reflect migrations **`006`**–**`009`**; apply all pending **`packages/database/migrations/`**.
 
 ## Database
 

@@ -6,7 +6,7 @@ import {
   buildAuditRequestFromExpress,
   insertAuditEvent,
 } from "../../services/auditService";
-
+import { assertIfMatchIfPresent, formatMedicationEtag } from "./etag";
 const idParamSchema = z.string().uuid();
 
 export const medicationUpdateBodySchema = z
@@ -105,7 +105,7 @@ function rowToHistorySnapshot(row: MedicationRow): Record<string, unknown> {
   };
 }
 
-function serializeMedication(row: MedicationRow) {
+export function serializeMedication(row: MedicationRow) {
   return {
     id: row.id,
     organization_id: row.organization_id,
@@ -169,6 +169,7 @@ export async function updateMedicationForRequest(
     organizationId: string;
     actorUserId: string;
     requestId: string;
+    ifMatch: string | undefined;
     patch: ParsedPatch;
     req: Request;
   },
@@ -178,6 +179,7 @@ export async function updateMedicationForRequest(
     organizationId,
     actorUserId,
     requestId,
+    ifMatch,
     patch,
     req,
   } = params;
@@ -213,6 +215,8 @@ export async function updateMedicationForRequest(
     err.code = "ORGANIZATION_FORBIDDEN";
     throw err;
   }
+
+  assertIfMatchIfPresent(ifMatch, current.updated_at);
 
   const { fragments, values } = buildUpdate(patch);
   if (fragments.length === 0) {
@@ -331,11 +335,13 @@ export async function putMedicationHandler(req: Request, res: Response) {
         organizationId,
         actorUserId: userId,
         requestId: req.context.requestId,
+        ifMatch: req.get("if-match"),
         patch: bodyParsed.data,
         req,
       }),
     );
 
+    res.setHeader("ETag", formatMedicationEtag(updated.updated_at));
     res.json(serializeMedication(updated));
   } catch (err) {
     const e = err as { code?: string; message?: string } & Error;
@@ -346,6 +352,12 @@ export async function putMedicationHandler(req: Request, res: Response) {
     }
     if (e.code === "ORGANIZATION_FORBIDDEN") {
       res.status(403).json({ error: "Forbidden for this organization" });
+      return;
+    }
+    if (e.code === "IF_MATCH_FAILED") {
+      res.status(412).json({
+        error: "Precondition failed (If-Match does not match resource)",
+      });
       return;
     }
     if (e.code === "EMPTY_PATCH") {
