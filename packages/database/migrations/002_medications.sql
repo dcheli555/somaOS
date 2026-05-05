@@ -36,6 +36,9 @@ CREATE TABLE soma_ehr.medications (
   -- Non-clinical extensions (provenance, integration payloads) without schema churn.
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
 
+  -- Optimistic concurrency (ETag `"v{N}"`); separate from audit timestamps.
+  "version" INTEGER NOT NULL DEFAULT 1,
+
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 

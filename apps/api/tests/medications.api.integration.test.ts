@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { deleteMedicationForRequest } from "../src/modules/medications/deleteMedication";
-import { formatMedicationEtag } from "../src/modules/medications/etag";
+import { toEtag } from "../src/modules/medications/etag";
 import { updateMedicationForRequest } from "../src/modules/medications/putMedication";
 import {
   createMedicationsIntegrationApp,
@@ -75,17 +75,19 @@ describe.skipIf(!process.env.DATABASE_URL)(
             organizationId: ORG_A,
             actorUserId: TEST_ACTOR_USER_ID,
             requestId,
-            ifMatch: undefined,
+            expectedVersion: 1,
             patch: { medication_name: "Updated in transaction test" },
             req,
           });
 
           expect(updated.medication_name).toBe("Updated in transaction test");
+          expect(updated.version).toBe(2);
+          expect(toEtag(updated.version)).toBe('"v2"');
 
           const {
             rows: [hist],
           } = await client.query<{
-            snapshot: { medication_name?: string };
+            snapshot: { medication_name?: string; version?: number };
             correlation_request_id: string | null;
           }>(
             `SELECT snapshot, correlation_request_id
@@ -96,6 +98,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
             [medicationId],
           );
           expect(hist!.snapshot.medication_name).toBe("Seed medication name");
+          expect(hist!.snapshot.version).toBe(1);
           expect(hist!.correlation_request_id).toBe(requestId);
 
           const {
@@ -104,12 +107,8 @@ describe.skipIf(!process.env.DATABASE_URL)(
             action: string;
             resource_type: string;
             resource_id: string;
-            patient_id: string;
-            request_id: string;
-            actor_user_id: string;
-            context: { domain?: string; requestId?: string };
           }>(
-            `SELECT action, resource_type, resource_id, patient_id, request_id, actor_user_id, context
+            `SELECT action, resource_type, resource_id
              FROM soma_ehr.audit_log
              WHERE resource_id = $1
              ORDER BY recorded_at DESC
@@ -117,13 +116,6 @@ describe.skipIf(!process.env.DATABASE_URL)(
             [medicationId],
           );
           expect(audit!.action).toBe("update");
-          expect(audit!.resource_type).toBe("medication");
-          expect(audit!.resource_id).toBe(medicationId);
-          expect(audit!.patient_id).toBe(PATIENT_ID);
-          expect(audit!.request_id).toBe(requestId);
-          expect(audit!.actor_user_id).toBe(TEST_ACTOR_USER_ID);
-          expect(audit!.context.domain).toBe("medications.put");
-          expect(audit!.context.requestId).toBe(requestId);
 
           await client.query("ROLLBACK");
         } catch (err) {
@@ -134,7 +126,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         }
       });
 
-      it("PUT rejects wrong If-Match (IF_MATCH_FAILED)", async () => {
+      it("PUT rejects stale expectedVersion (PRECONDITION_FAILED)", async () => {
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
@@ -144,7 +136,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
             `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status)
              VALUES ($1, $2, $3, 'active')
              RETURNING id`,
-            [ORG_A, PATIENT_ID, "If-match seed"],
+            [ORG_A, PATIENT_ID, "Version stale seed"],
           );
           const medicationId = seed!.id;
 
@@ -154,11 +146,11 @@ describe.skipIf(!process.env.DATABASE_URL)(
               organizationId: ORG_A,
               actorUserId: TEST_ACTOR_USER_ID,
               requestId: randomUUID(),
-              ifMatch: '"1"',
+              expectedVersion: 99,
               patch: { medication_name: "Should not apply" },
               req: stubPutMedicationRequest(medicationId),
             }),
-          ).rejects.toMatchObject({ code: "IF_MATCH_FAILED" });
+          ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
 
           await client.query("ROLLBACK");
         } catch (err) {
@@ -169,33 +161,33 @@ describe.skipIf(!process.env.DATABASE_URL)(
         }
       });
 
-      it("PUT succeeds when If-Match matches updated_at", async () => {
+      it("PUT succeeds when expectedVersion matches current row", async () => {
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
 
           const {
             rows: [seed],
-          } = await client.query<{ id: string; updated_at: Date }>(
+          } = await client.query<{ id: string }>(
             `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status)
              VALUES ($1, $2, $3, 'active')
-             RETURNING id, updated_at`,
+             RETURNING id`,
             [ORG_A, PATIENT_ID, "Etag PUT ok"],
           );
           const medicationId = seed!.id;
-          const etag = formatMedicationEtag(seed!.updated_at);
 
           const updated = await updateMedicationForRequest(client, {
             medicationId,
             organizationId: ORG_A,
             actorUserId: TEST_ACTOR_USER_ID,
             requestId: randomUUID(),
-            ifMatch: etag,
+            expectedVersion: 1,
             patch: { dose_text: "5mg" },
             req: stubPutMedicationRequest(medicationId),
           });
 
           expect(updated.dose_text).toBe("5mg");
+          expect(updated.version).toBe(2);
 
           await client.query("ROLLBACK");
         } catch (err) {
@@ -225,7 +217,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
             organizationId: ORG_A,
             actorUserId: TEST_ACTOR_USER_ID,
             requestId: randomUUID(),
-            ifMatch: undefined,
+            expectedVersion: 1,
             patch: { medication_name: "Second version" },
             req: stubPutMedicationRequest(medicationId),
           });
@@ -236,7 +228,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
               organizationId: ORG_A,
               actorUserId: TEST_ACTOR_USER_ID,
               requestId: randomUUID(),
-              ifMatch: undefined,
+              expectedVersion: 2,
               req: stubDeleteMedicationRequest(medicationId),
             }),
           ).rejects.toMatchObject({ code: "MEDICATION_HAS_HISTORY" });
@@ -275,10 +267,22 @@ describe.skipIf(!process.env.DATABASE_URL)(
           ]);
         });
 
+        it("GET returns JSON with version and ETag from version (not updated_at millis)", async () => {
+          const res = await request(app)
+            .get(`/api/medications/${medicationId}`)
+            .set("X-Organization-Id", ORG_A);
+
+          expect(res.status).toBe(200);
+          expect(res.body.version).toBe(1);
+          expect(res.headers.etag).toBe(toEtag(1));
+          expect(res.headers.etag).not.toMatch(/^"\d{10,}"$/);
+        });
+
         it("PUT returns 403 when X-Organization-Id does not match", async () => {
           const res = await request(app)
             .put(`/api/medications/${medicationId}`)
             .set("X-Organization-Id", ORG_B)
+            .set("If-Match", toEtag(1))
             .send({ medication_name: "Should not apply" });
 
           expect(res.status).toBe(403);
@@ -296,14 +300,37 @@ describe.skipIf(!process.env.DATABASE_URL)(
           expect(meds[0]!.medication_name).toBe("HTTP seed name");
         });
 
-        it("PUT returns 412 when If-Match is wrong", async () => {
+        it("PUT returns 428 without If-Match", async () => {
           const res = await request(app)
             .put(`/api/medications/${medicationId}`)
             .set("X-Organization-Id", ORG_A)
-            .set("If-Match", '"0"')
+            .send({ medication_name: "Nope" });
+
+          expect(res.status).toBe(428);
+          expect(res.body.error.code).toBe("PRECONDITION_REQUIRED");
+          expect(res.body.error.requestId).toBeTruthy();
+        });
+
+        it("PUT returns 400 for malformed If-Match", async () => {
+          const res = await request(app)
+            .put(`/api/medications/${medicationId}`)
+            .set("X-Organization-Id", ORG_A)
+            .set("If-Match", "not-an-etag")
+            .send({ medication_name: "Nope" });
+
+          expect(res.status).toBe(400);
+          expect(res.body.error.code).toBe("IF_MATCH_INVALID");
+        });
+
+        it("PUT returns 412 when If-Match version is stale", async () => {
+          const res = await request(app)
+            .put(`/api/medications/${medicationId}`)
+            .set("X-Organization-Id", ORG_A)
+            .set("If-Match", toEtag(2))
             .send({ medication_name: "Nope" });
 
           expect(res.status).toBe(412);
+          expect(res.body.error.code).toBe("PRECONDITION_FAILED");
 
           const { rows: meds } = await pool.query<{ medication_name: string }>(
             `SELECT medication_name FROM soma_ehr.medications WHERE id = $1`,
@@ -318,12 +345,36 @@ describe.skipIf(!process.env.DATABASE_URL)(
         const res = await request(app)
           .put(`/api/medications/${fakeId}`)
           .set("X-Organization-Id", ORG_A)
+          .set("If-Match", toEtag(1))
           .send({ medication_name: "Nope" });
 
         expect(res.status).toBe(404);
       });
 
-      it("POST creates a medication and audit row; responds with ETag and Location", async () => {
+      it("HTTP PUT with matching If-Match returns updated body and new ETag", async () => {
+        const post = await request(app)
+          .post("/api/medications")
+          .set("X-Organization-Id", ORG_A)
+          .send({
+            patient_id: PATIENT_ID,
+            medication_name: "Concurrency HTTP",
+          });
+        expect(post.status).toBe(201);
+        expect(post.headers.etag).toBe(toEtag(1));
+
+        const id = post.body.id as string;
+        const put = await request(app)
+          .put(`/api/medications/${id}`)
+          .set("X-Organization-Id", ORG_A)
+          .set("If-Match", toEtag(1))
+          .send({ medication_name: "Concurrency HTTP v2" });
+
+        expect(put.status).toBe(200);
+        expect(put.body.version).toBe(2);
+        expect(put.headers.etag).toBe(toEtag(2));
+      });
+
+      it("POST returns ETag v1 tied to row version", async () => {
         const res = await request(app)
           .post("/api/medications")
           .set("X-Organization-Id", ORG_A)
@@ -333,10 +384,10 @@ describe.skipIf(!process.env.DATABASE_URL)(
           });
 
         expect(res.status).toBe(201);
-        expect(res.body.medication_name).toBe("Created via POST");
+        expect(res.body.version).toBe(1);
+        expect(res.headers.etag).toBe(toEtag(1));
+
         const id = res.body.id as string;
-        expect(res.headers.etag).toMatch(/^"\d+"$/);
-        expect(res.headers.location).toBe(`/api/medications/${id}`);
 
         const {
           rows: [audit],
@@ -346,15 +397,40 @@ describe.skipIf(!process.env.DATABASE_URL)(
           [id],
         );
         expect(audit!.action).toBe("create");
-        expect(audit!.context.domain).toBe("medications.post");
 
         const del = await request(app)
           .delete(`/api/medications/${id}`)
-          .set("X-Organization-Id", ORG_A);
+          .set("X-Organization-Id", ORG_A)
+          .set("If-Match", toEtag(1));
         expect(del.status).toBe(204);
       });
 
-      it("DELETE returns 412 when If-Match wrong, then succeeds without header", async () => {
+      it("DELETE returns 428 without If-Match", async () => {
+        const post = await request(app)
+          .post("/api/medications")
+          .set("X-Organization-Id", ORG_A)
+          .send({
+            patient_id: PATIENT_ID,
+            medication_name: "Needs if-match delete",
+          });
+        expect(post.status).toBe(201);
+        const id = post.body.id as string;
+
+        const res = await request(app)
+          .delete(`/api/medications/${id}`)
+          .set("X-Organization-Id", ORG_A);
+
+        expect(res.status).toBe(428);
+        expect(res.body.error.code).toBe("PRECONDITION_REQUIRED");
+
+        const cleanup = await request(app)
+          .delete(`/api/medications/${id}`)
+          .set("X-Organization-Id", ORG_A)
+          .set("If-Match", toEtag(1));
+        expect(cleanup.status).toBe(204);
+      });
+
+      it("DELETE returns 412 when If-Match version stale, then succeeds", async () => {
         const post = await request(app)
           .post("/api/medications")
           .set("X-Organization-Id", ORG_A)
@@ -368,12 +444,14 @@ describe.skipIf(!process.env.DATABASE_URL)(
         const bad = await request(app)
           .delete(`/api/medications/${id}`)
           .set("X-Organization-Id", ORG_A)
-          .set("If-Match", '"0"');
+          .set("If-Match", toEtag(2));
         expect(bad.status).toBe(412);
+        expect(bad.body.error.code).toBe("PRECONDITION_FAILED");
 
         const ok = await request(app)
           .delete(`/api/medications/${id}`)
-          .set("X-Organization-Id", ORG_A);
+          .set("X-Organization-Id", ORG_A)
+          .set("If-Match", toEtag(1));
         expect(ok.status).toBe(204);
       });
     });

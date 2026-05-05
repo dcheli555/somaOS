@@ -6,7 +6,9 @@ import {
   buildAuditRequestFromExpress,
   insertAuditEvent,
 } from "../../services/auditService";
-import { assertIfMatchIfPresent, formatMedicationEtag } from "./etag";
+import { parseIfMatch, toEtag } from "./etag";
+import { sendMedicationApiError } from "./medicationApiError";
+
 const idParamSchema = z.string().uuid();
 
 export const medicationUpdateBodySchema = z
@@ -57,6 +59,7 @@ export interface MedicationRow {
   start_at: Date | null;
   end_at: Date | null;
   metadata: unknown;
+  version: number;
   created_at: Date;
   updated_at: Date;
 }
@@ -100,6 +103,7 @@ function rowToHistorySnapshot(row: MedicationRow): Record<string, unknown> {
     start_at: row.start_at?.toISOString() ?? null,
     end_at: row.end_at?.toISOString() ?? null,
     metadata: row.metadata,
+    version: row.version,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -124,6 +128,7 @@ export function serializeMedication(row: MedicationRow) {
     start_at: row.start_at?.toISOString() ?? null,
     end_at: row.end_at?.toISOString() ?? null,
     metadata: row.metadata,
+    version: row.version,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -169,7 +174,7 @@ export async function updateMedicationForRequest(
     organizationId: string;
     actorUserId: string;
     requestId: string;
-    ifMatch: string | undefined;
+    expectedVersion: number;
     patch: ParsedPatch;
     req: Request;
   },
@@ -179,7 +184,7 @@ export async function updateMedicationForRequest(
     organizationId,
     actorUserId,
     requestId,
-    ifMatch,
+    expectedVersion,
     patch,
     req,
   } = params;
@@ -216,7 +221,11 @@ export async function updateMedicationForRequest(
     throw err;
   }
 
-  assertIfMatchIfPresent(ifMatch, current.updated_at);
+  if (current.version !== expectedVersion) {
+    const err = new Error("PRECONDITION_FAILED") as Error & { code: string };
+    err.code = "PRECONDITION_FAILED";
+    throw err;
+  }
 
   const { fragments, values } = buildUpdate(patch);
   if (fragments.length === 0) {
@@ -246,10 +255,13 @@ export async function updateMedicationForRequest(
 
   const idParam = values.length + 1;
   const orgParam = values.length + 2;
+  const verParam = values.length + 3;
   const updateSql = `
     UPDATE soma_ehr.medications
-    SET ${fragments.join(", ")}
-    WHERE id = $${idParam} AND organization_id = $${orgParam}
+    SET ${fragments.join(", ")},
+        "version" = "version" + 1,
+        "updated_at" = now()
+    WHERE id = $${idParam} AND organization_id = $${orgParam} AND "version" = $${verParam}
     RETURNING *
   `;
 
@@ -257,14 +269,13 @@ export async function updateMedicationForRequest(
     ...values,
     medicationId,
     organizationId,
+    expectedVersion,
   ]);
 
   const updated = update.rows[0];
   if (!updated) {
-    const err = new Error("MEDICATION_UPDATE_FAILED") as Error & {
-      code: string;
-    };
-    err.code = "MEDICATION_UPDATE_FAILED";
+    const err = new Error("PRECONDITION_FAILED") as Error & { code: string };
+    err.code = "PRECONDITION_FAILED";
     throw err;
   }
 
@@ -298,33 +309,84 @@ export async function updateMedicationForRequest(
 export async function putMedicationHandler(req: Request, res: Response) {
   const idParsed = idParamSchema.safeParse(req.params.id);
   if (!idParsed.success) {
-    res.status(400).json({ error: "Invalid medication id (expected UUID)" });
+    sendMedicationApiError(
+      res,
+      400,
+      "INVALID_ID",
+      "Invalid medication id (expected UUID)",
+      req.context.requestId,
+    );
     return;
   }
 
   const bodyParsed = medicationUpdateBodySchema.safeParse(req.body);
   if (!bodyParsed.success) {
-    res.status(400).json({
-      error: "Invalid request body",
-      details: bodyParsed.error.flatten(),
-    });
+    sendMedicationApiError(
+      res,
+      400,
+      "INVALID_BODY",
+      "Invalid request body",
+      req.context.requestId,
+    );
     return;
   }
 
   if (Object.keys(bodyParsed.data).length === 0) {
-    res.status(400).json({ error: "No updatable fields provided" });
+    sendMedicationApiError(
+      res,
+      400,
+      "EMPTY_PATCH",
+      "No updatable fields provided",
+      req.context.requestId,
+    );
     return;
   }
 
   const organizationId = req.context.organizationId;
   if (!organizationId) {
-    res.status(500).json({ error: "Organization context not initialized" });
+    sendMedicationApiError(
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Organization context not initialized",
+      req.context.requestId,
+    );
     return;
   }
 
   const userId = req.authContext?.userId;
   if (!userId) {
-    res.status(401).json({ error: "Unauthorized" });
+    sendMedicationApiError(
+      res,
+      401,
+      "UNAUTHORIZED",
+      "Unauthorized",
+      req.context.requestId,
+    );
+    return;
+  }
+
+  const rawIfMatch = req.get("if-match");
+  if (rawIfMatch === undefined || rawIfMatch.trim() === "") {
+    sendMedicationApiError(
+      res,
+      428,
+      "PRECONDITION_REQUIRED",
+      "Missing If-Match header for this operation.",
+      req.context.requestId,
+    );
+    return;
+  }
+
+  const expectedVersion = parseIfMatch(rawIfMatch);
+  if (expectedVersion === null) {
+    sendMedicationApiError(
+      res,
+      400,
+      "IF_MATCH_INVALID",
+      "Invalid If-Match header (expected a quoted tag like \"v1\").",
+      req.context.requestId,
+    );
     return;
   }
 
@@ -335,47 +397,77 @@ export async function putMedicationHandler(req: Request, res: Response) {
         organizationId,
         actorUserId: userId,
         requestId: req.context.requestId,
-        ifMatch: req.get("if-match"),
+        expectedVersion,
         patch: bodyParsed.data,
         req,
       }),
     );
 
-    res.setHeader("ETag", formatMedicationEtag(updated.updated_at));
+    res.setHeader("ETag", toEtag(updated.version));
     res.json(serializeMedication(updated));
   } catch (err) {
     const e = err as { code?: string; message?: string } & Error;
 
     if (e.code === "MEDICATION_NOT_FOUND") {
-      res.status(404).json({ error: "Medication not found" });
+      sendMedicationApiError(
+        res,
+        404,
+        "NOT_FOUND",
+        "Medication not found",
+        req.context.requestId,
+      );
       return;
     }
     if (e.code === "ORGANIZATION_FORBIDDEN") {
-      res.status(403).json({ error: "Forbidden for this organization" });
+      sendMedicationApiError(
+        res,
+        403,
+        "FORBIDDEN",
+        "Forbidden for this organization",
+        req.context.requestId,
+      );
       return;
     }
-    if (e.code === "IF_MATCH_FAILED") {
-      res.status(412).json({
-        error: "Precondition failed (If-Match does not match resource)",
-      });
+    if (e.code === "PRECONDITION_FAILED") {
+      sendMedicationApiError(
+        res,
+        412,
+        "PRECONDITION_FAILED",
+        "The resource has been modified. Refresh and try again.",
+        req.context.requestId,
+      );
       return;
     }
     if (e.code === "EMPTY_PATCH") {
-      res
-        .status(400)
-        .json({ error: "No updatable fields provided" });
+      sendMedicationApiError(
+        res,
+        400,
+        "EMPTY_PATCH",
+        "No updatable fields provided",
+        req.context.requestId,
+      );
       return;
     }
 
     const pgCode = (err as { code?: string }).code;
     if (pgCode === "23514") {
-      res.status(400).json({
-        error: "Update violates data constraints (e.g. date range or status)",
-      });
+      sendMedicationApiError(
+        res,
+        400,
+        "CONSTRAINT_VIOLATION",
+        "Update violates data constraints (e.g. date range or status)",
+        req.context.requestId,
+      );
       return;
     }
 
     console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+    sendMedicationApiError(
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Internal server error",
+      req.context.requestId,
+    );
   }
 }

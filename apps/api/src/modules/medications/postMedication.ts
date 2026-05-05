@@ -6,12 +6,13 @@ import {
   buildAuditRequestFromExpress,
   insertAuditEvent,
 } from "../../services/auditService";
-import { formatMedicationEtag } from "./etag";
+import { toEtag } from "./etag";
 import {
   medicationUpdateBodySchema,
   serializeMedication,
+  type MedicationRow,
 } from "./putMedication";
-import type { MedicationRow } from "./putMedication";
+import { sendMedicationApiError } from "./medicationApiError";
 
 export const medicationCreateBodySchema = z
   .object({
@@ -134,22 +135,37 @@ export async function createMedicationForRequest(
 export async function postMedicationHandler(req: Request, res: Response) {
   const parsed = medicationCreateBodySchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({
-      error: "Invalid request body",
-      details: parsed.error.flatten(),
-    });
+    sendMedicationApiError(
+      res,
+      400,
+      "INVALID_BODY",
+      "Invalid request body",
+      req.context.requestId,
+    );
     return;
   }
 
   const organizationId = req.context.organizationId;
   if (!organizationId) {
-    res.status(500).json({ error: "Organization context not initialized" });
+    sendMedicationApiError(
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Organization context not initialized",
+      req.context.requestId,
+    );
     return;
   }
 
   const userId = req.authContext?.userId;
   if (!userId) {
-    res.status(401).json({ error: "Unauthorized" });
+    sendMedicationApiError(
+      res,
+      401,
+      "UNAUTHORIZED",
+      "Unauthorized",
+      req.context.requestId,
+    );
     return;
   }
 
@@ -164,18 +180,28 @@ export async function postMedicationHandler(req: Request, res: Response) {
       }),
     );
 
-    res.setHeader("ETag", formatMedicationEtag(created.updated_at));
+    res.setHeader("ETag", toEtag(created.version));
     res.setHeader("Location", `/api/medications/${created.id}`);
     res.status(201).json(serializeMedication(created));
   } catch (err) {
     const pgCode = (err as { code?: string }).code;
     if (pgCode === "23514") {
-      res.status(400).json({
-        error: "Create violates data constraints (e.g. date range or status)",
-      });
+      sendMedicationApiError(
+        res,
+        400,
+        "CONSTRAINT_VIOLATION",
+        "Create violates data constraints (e.g. date range or status)",
+        req.context.requestId,
+      );
       return;
     }
     console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+    sendMedicationApiError(
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Internal server error",
+      req.context.requestId,
+    );
   }
 }

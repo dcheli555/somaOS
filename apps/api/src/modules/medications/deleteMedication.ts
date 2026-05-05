@@ -6,7 +6,8 @@ import {
   buildAuditRequestFromExpress,
   insertAuditEvent,
 } from "../../services/auditService";
-import { assertIfMatchIfPresent } from "./etag";
+import { parseIfMatch, toEtag } from "./etag";
+import { sendMedicationApiError } from "./medicationApiError";
 import type { MedicationRow } from "./putMedication";
 
 const idParamSchema = z.string().uuid();
@@ -18,12 +19,18 @@ export async function deleteMedicationForRequest(
     organizationId: string;
     actorUserId: string;
     requestId: string;
-    ifMatch: string | undefined;
+    expectedVersion: number;
     req: Request;
   },
 ): Promise<MedicationRow> {
-  const { medicationId, organizationId, actorUserId, requestId, ifMatch, req } =
-    params;
+  const {
+    medicationId,
+    organizationId,
+    actorUserId,
+    requestId,
+    expectedVersion,
+    req,
+  } = params;
 
   const {
     rows: [clock],
@@ -55,7 +62,11 @@ export async function deleteMedicationForRequest(
     throw err;
   }
 
-  assertIfMatchIfPresent(ifMatch, row.updated_at);
+  if (row.version !== expectedVersion) {
+    const err = new Error("PRECONDITION_FAILED") as Error & { code: string };
+    err.code = "PRECONDITION_FAILED";
+    throw err;
+  }
 
   const {
     rows: [{ exists }],
@@ -75,6 +86,20 @@ export async function deleteMedicationForRequest(
     throw err;
   }
 
+  const del = await client.query<MedicationRow>(
+    `DELETE FROM soma_ehr.medications
+     WHERE id = $1 AND organization_id = $2 AND "version" = $3
+     RETURNING *`,
+    [medicationId, organizationId, expectedVersion],
+  );
+
+  const deleted = del.rows[0];
+  if (!deleted) {
+    const err = new Error("PRECONDITION_FAILED") as Error & { code: string };
+    err.code = "PRECONDITION_FAILED";
+    throw err;
+  }
+
   await insertAuditEvent(client, {
     request: buildAuditRequestFromExpress(req, {
       organizationId,
@@ -83,9 +108,9 @@ export async function deleteMedicationForRequest(
     }),
     event: {
       resourceType: "medication",
-      resourceId: row.id,
+      resourceId: deleted.id,
       action: "delete",
-      patientId: row.patient_id,
+      patientId: deleted.patient_id,
       occurredAtIso: eventTime.toISOString(),
     },
     metadata: {
@@ -99,83 +124,135 @@ export async function deleteMedicationForRequest(
     },
   });
 
-  const del = await client.query<MedicationRow>(
-    `DELETE FROM soma_ehr.medications
-     WHERE id = $1 AND organization_id = $2
-     RETURNING *`,
-    [medicationId, organizationId],
-  );
-
-  const deleted = del.rows[0];
-  if (!deleted) {
-    const err = new Error("MEDICATION_DELETE_FAILED") as Error & {
-      code: string;
-    };
-    err.code = "MEDICATION_DELETE_FAILED";
-    throw err;
-  }
-
   return deleted;
 }
 
 export async function deleteMedicationHandler(req: Request, res: Response) {
   const idParsed = idParamSchema.safeParse(req.params.id);
   if (!idParsed.success) {
-    res.status(400).json({ error: "Invalid medication id (expected UUID)" });
+    sendMedicationApiError(
+      res,
+      400,
+      "INVALID_ID",
+      "Invalid medication id (expected UUID)",
+      req.context.requestId,
+    );
     return;
   }
 
   const organizationId = req.context.organizationId;
   if (!organizationId) {
-    res.status(500).json({ error: "Organization context not initialized" });
+    sendMedicationApiError(
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Organization context not initialized",
+      req.context.requestId,
+    );
     return;
   }
 
   const userId = req.authContext?.userId;
   if (!userId) {
-    res.status(401).json({ error: "Unauthorized" });
+    sendMedicationApiError(
+      res,
+      401,
+      "UNAUTHORIZED",
+      "Unauthorized",
+      req.context.requestId,
+    );
     return;
   }
 
-  const ifMatch = req.get("if-match");
+  const rawIfMatch = req.get("if-match");
+  if (rawIfMatch === undefined || rawIfMatch.trim() === "") {
+    sendMedicationApiError(
+      res,
+      428,
+      "PRECONDITION_REQUIRED",
+      "Missing If-Match header for this operation.",
+      req.context.requestId,
+    );
+    return;
+  }
+
+  const expectedVersion = parseIfMatch(rawIfMatch);
+  if (expectedVersion === null) {
+    sendMedicationApiError(
+      res,
+      400,
+      "IF_MATCH_INVALID",
+      "Invalid If-Match header (expected a quoted tag like \"v1\").",
+      req.context.requestId,
+    );
+    return;
+  }
 
   try {
-    await withTransaction((client) =>
+    const deleted = await withTransaction((client) =>
       deleteMedicationForRequest(client, {
         medicationId: idParsed.data,
         organizationId,
         actorUserId: userId,
         requestId: req.context.requestId,
-        ifMatch,
+        expectedVersion,
         req,
       }),
     );
 
+    res.setHeader("ETag", toEtag(deleted.version));
     res.status(204).end();
   } catch (err) {
     const e = err as { code?: string } & Error;
 
     if (e.code === "MEDICATION_NOT_FOUND") {
-      res.status(404).json({ error: "Medication not found" });
+      sendMedicationApiError(
+        res,
+        404,
+        "NOT_FOUND",
+        "Medication not found",
+        req.context.requestId,
+      );
       return;
     }
     if (e.code === "ORGANIZATION_FORBIDDEN") {
-      res.status(403).json({ error: "Forbidden for this organization" });
+      sendMedicationApiError(
+        res,
+        403,
+        "FORBIDDEN",
+        "Forbidden for this organization",
+        req.context.requestId,
+      );
       return;
     }
-    if (e.code === "IF_MATCH_FAILED") {
-      res.status(412).json({ error: "Precondition failed (If-Match does not match resource)" });
+    if (e.code === "PRECONDITION_FAILED") {
+      sendMedicationApiError(
+        res,
+        412,
+        "PRECONDITION_FAILED",
+        "The resource has been modified. Refresh and try again.",
+        req.context.requestId,
+      );
       return;
     }
     if (e.code === "MEDICATION_HAS_HISTORY") {
-      res.status(409).json({
-        error:
-          "Medication cannot be deleted: revision history exists (append-only retention)",
-      });
+      sendMedicationApiError(
+        res,
+        409,
+        "CONFLICT",
+        "Medication cannot be deleted: revision history exists (append-only retention)",
+        req.context.requestId,
+      );
       return;
     }
 
     console.error(err);
-    res.status(500).json({ error: "Internal server error" });
+    sendMedicationApiError(
+      res,
+      500,
+      "INTERNAL_ERROR",
+      "Internal server error",
+      req.context.requestId,
+    );
   }
 }

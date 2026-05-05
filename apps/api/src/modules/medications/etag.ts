@@ -1,45 +1,39 @@
-/** ETag for medications: millisecond `updated_at` (stable for optimistic concurrency). */
+/** HTTP ETag for medications from DB `version` only (opaque token `"v{n}"`). */
 
-export function formatMedicationEtag(updatedAt: Date): string {
-  return `"${updatedAt.getTime()}"`;
+export function toEtag(version: number): string {
+  return `"v${version}"`;
 }
 
-function normalizeEntityTag(part: string): string {
-  let t = part.trim();
-  if (t.toLowerCase().startsWith("w/")) {
-    t = t.slice(2).trim();
+/**
+ * Parse If-Match: first comma-separated candidate; supports `"v5"`, `v5`, `W/"v5"`.
+ * Invalid or missing semantic version portion → null.
+ */
+export function parseIfMatch(header: string | undefined): number | null {
+  if (header === undefined || header === null) {
+    return null;
   }
-  if (t.startsWith('"') && t.endsWith('"') && t.length >= 2) {
-    t = t.slice(1, -1);
+  const trimmed = header.trim();
+  if (trimmed === "") {
+    return null;
   }
-  return t;
-}
 
-/** Returns true if `ifMatchHeader` matches `updatedAt` (supports comma-separated list, `*`). */
-export function medicationEtagMatches(
-  ifMatchHeader: string,
-  updatedAt: Date,
-): boolean {
-  const expected = String(updatedAt.getTime());
-  for (const raw of ifMatchHeader.split(",")) {
-    const n = normalizeEntityTag(raw);
-    if (n === "*" || n === expected) {
-      return true;
-    }
+  let first = trimmed.split(",")[0]!.trim();
+  if (first.toLowerCase().startsWith("w/")) {
+    first = first.slice(2).trim();
   }
-  return false;
-}
+  if (first.startsWith('"') && first.endsWith('"') && first.length >= 2) {
+    first = first.slice(1, -1).trim();
+  }
 
-export function assertIfMatchIfPresent(
-  ifMatchHeader: string | undefined,
-  updatedAt: Date,
-): void {
-  if (ifMatchHeader === undefined || ifMatchHeader.trim() === "") {
-    return;
+  const m = /^v(\d+)$/i.exec(first);
+  if (!m) {
+    return null;
   }
-  if (!medicationEtagMatches(ifMatchHeader, updatedAt)) {
-    const err = new Error("IF_MATCH_FAILED") as Error & { code: string };
-    err.code = "IF_MATCH_FAILED";
-    throw err;
+
+  const n = Number(m[1]);
+  if (!Number.isInteger(n) || n < 1) {
+    return null;
   }
+
+  return n;
 }
