@@ -11,7 +11,7 @@ CREATE TABLE soma_ehr.medications (
   rxnorm_cui TEXT,
   ndc_11 TEXT,
 
-  medication_display_name TEXT NOT NULL,
+  medication_name TEXT NOT NULL,
 
   dose_text TEXT,
   route TEXT,

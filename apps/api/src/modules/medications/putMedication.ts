@@ -11,11 +11,14 @@ const idParamSchema = z.string().uuid();
 
 export const medicationUpdateBodySchema = z
   .object({
-    medication_display_name: z.string().min(1).optional(),
+    medication_name: z.string().min(1).optional(),
     rxnorm_cui: z.string().nullable().optional(),
+    ndc_10: z.string().nullable().optional(),
     ndc_11: z.string().nullable().optional(),
     dose_text: z.string().nullable().optional(),
     route: z.string().nullable().optional(),
+    form: z.string().nullable().optional(),
+    strength: z.string().nullable().optional(),
     frequency_text: z.string().nullable().optional(),
     sig_text: z.string().nullable().optional(),
     status: z
@@ -41,10 +44,13 @@ export interface MedicationRow {
   organization_id: string;
   patient_id: string;
   rxnorm_cui: string | null;
+  ndc_10: string | null;
   ndc_11: string | null;
-  medication_display_name: string;
+  medication_name: string;
   dose_text: string | null;
   route: string | null;
+  form: string | null;
+  strength: string | null;
   frequency_text: string | null;
   sig_text: string | null;
   status: string;
@@ -59,11 +65,14 @@ const bodyFieldToColumn: Record<
   keyof MedicationUpdateBody,
   keyof MedicationRow | "metadata"
 > = {
-  medication_display_name: "medication_display_name",
+  medication_name: "medication_name",
   rxnorm_cui: "rxnorm_cui",
+  ndc_10: "ndc_10",
   ndc_11: "ndc_11",
   dose_text: "dose_text",
   route: "route",
+  form: "form",
+  strength: "strength",
   frequency_text: "frequency_text",
   sig_text: "sig_text",
   status: "status",
@@ -78,10 +87,13 @@ function rowToHistorySnapshot(row: MedicationRow): Record<string, unknown> {
     organization_id: row.organization_id,
     patient_id: row.patient_id,
     rxnorm_cui: row.rxnorm_cui,
+    ndc_10: row.ndc_10,
     ndc_11: row.ndc_11,
-    medication_display_name: row.medication_display_name,
+    medication_name: row.medication_name,
     dose_text: row.dose_text,
     route: row.route,
+    form: row.form,
+    strength: row.strength,
     frequency_text: row.frequency_text,
     sig_text: row.sig_text,
     status: row.status,
@@ -99,10 +111,13 @@ function serializeMedication(row: MedicationRow) {
     organization_id: row.organization_id,
     patient_id: row.patient_id,
     rxnorm_cui: row.rxnorm_cui,
+    ndc_10: row.ndc_10,
     ndc_11: row.ndc_11,
-    medication_display_name: row.medication_display_name,
+    medication_name: row.medication_name,
     dose_text: row.dose_text,
     route: row.route,
+    form: row.form,
+    strength: row.strength,
     frequency_text: row.frequency_text,
     sig_text: row.sig_text,
     status: row.status,

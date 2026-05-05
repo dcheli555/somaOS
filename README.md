@@ -7,6 +7,7 @@ pnpm monorepo for the Soma EHR project.
 | Path | Package | Role |
 |------|---------|------|
 | `apps/api` | `@soma-ehr/api` | HTTP API (Express, TypeScript) |
+| `apps/clerk-dev` | `@soma-ehr/clerk-dev` | Minimal Vite + Clerk UI for **JWT** and **`X-Organization-Id`** (Phase 3 / curl testing) |
 | `packages/database` | `@soma-ehr/database` | Postgres client, SQL migrations |
 | `packages/shared` | `@soma-ehr/shared` | Shared types and utilities |
 
@@ -65,6 +66,22 @@ postgresql://postgres:localdev@localhost:5432/soma_ehr
 
 Then run [database migrations](#database) (`pnpm --filter @soma-ehr/database migrate`). Stop/remove the container when done: `docker stop soma-postgres` (remove with `docker rm soma-postgres` after stop).
 
+### Docker Compose + dev stack (recommended)
+
+Root [`compose.yml`](compose.yml) runs the same Postgres image with defaults **`POSTGRES_PASSWORD=localdev`**, **`POSTGRES_DB=soma_ehr`**, port **5432**. Point **`DATABASE_URL`** at that database (example in the previous block).
+
+From the repo root:
+
+```bash
+pnpm dev:stack
+```
+
+This script ([`scripts/start-dev.sh`](scripts/start-dev.sh)): starts **`docker compose up -d postgres`**, waits until **`pg_isready`** succeeds, runs **`pnpm --filter @soma-ehr/database db:test`** and **`migrate`**, then starts **`@soma-ehr/api`**. Optional: **`START_CLERK_DEV=1 pnpm dev:stack`** also runs **`clerk-dev`** on port **5173** in the background until you stop the API (**Ctrl+C**).
+
+**Env toggles** (see comments in the script): **`SKIP_DOCKER=1`**, **`SKIP_MIGRATE=1`**, **`SKIP_DB_CHECK=1`**, **`SKIP_PG_WAIT=1`** (with **`SKIP_DOCKER=1`**), **`POSTGRES_DB` / `POSTGRES_PASSWORD`** for Compose.
+
+If you already created a container named **`soma-postgres`** manually, either remove it (`docker rm -f soma-postgres`) before first **`compose up`**, or align your existing container with the Compose settings so there is no port/name conflict.
+
 ## Setup
 
 ```bash
@@ -86,6 +103,8 @@ Create a `.env` at the **repository root** (or under `packages/database/` for pa
 | `CLERK_PUBLISHABLE_KEY` | `@soma-ehr/api` | Clerk publishable key (JWT verification / middleware; see [Clerk Dashboard](https://dashboard.clerk.com/)) |
 | `CLERK_SECRET_KEY` | `@soma-ehr/api` | Clerk secret key (backend; keep server-side only) |
 
+Use **`CLERK_PUBLISHABLE_KEY`** and **`CLERK_SECRET_KEY`** in root `.env` for the API. If you still have **`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`** from a Next.js guide, **`apps/api`** maps it onto **`CLERK_PUBLISHABLE_KEY`** when the latter is empty. Restart **`pnpm … api dev`** after changing `.env`. Missing **`CLERK_PUBLISHABLE_KEY`** yields **Publishable key is missing** on **`/api/*`** routes.
+
 The database package loads root `.env` first, then `packages/database/.env`, so local DB settings can override when needed.
 
 ## API
@@ -98,25 +117,69 @@ pnpm --filter @soma-ehr/api dev
 pnpm dev
 ```
 
-- Health check: `GET http://localhost:3000/health` → `{ "status": "ok" }` (public; no auth)
+### curl examples
+
+Assume the API is on **`http://localhost:3000`** (change port if `PORT` differs).
+
+**Health (no auth):**
+
+```bash
+curl -sS http://localhost:3000/health
+```
+
+Expected: `{"status":"ok"}`. Add `-i` to see response headers, or `-w "\nHTTP %{http_code}\n"` to print the status line after the body.
+
+**Medication update (requires Clerk JWT + org header):**
+
+```bash
+BASE_URL=http://localhost:3000
+CLERK_JWT='eyJ...'   # Clerk session JWT from your test app / dashboard
+ORG_ID='11111111-1111-4111-8111-111111111111'   # UUID; must match the medication row
+MEDICATION_ID='...'  # UUID returned when you seeded the row (see below)
+
+curl -sS -X PUT "${BASE_URL}/api/medications/${MEDICATION_ID}" \
+  -H "Authorization: Bearer ${CLERK_JWT}" \
+  -H "X-Organization-Id: ${ORG_ID}" \
+  -H "Content-Type: application/json" \
+  -d '{"medication_name":"Acetaminophen 500mg — updated sig"}'
+```
+
+Full create (SQL) → update (curl) → verify flow: [docs/medication-smoke-test.md](docs/medication-smoke-test.md) and **`scripts/medication-smoke-test.sh`**. Same flow in Postman: [docs/postman/README.md](docs/postman/README.md) — import collection + env, set JWT from **`clerk-dev`**).
+
+**JWT + org id without hand-rolling values:** run [apps/clerk-dev](apps/clerk-dev/README.md) — `pnpm --filter @soma-ehr/clerk-dev dev` — and open **http://localhost:5173** (add that origin in the Clerk Dashboard for the **same** app as `CLERK_PUBLISHABLE_KEY`). Copy the **JWT** and **org UUID** from the page into the curl placeholders above.
 
 Protected routes should use `clerkMiddleware()` (already applied in `createApp`) plus `requireAuthContext` from `src/middleware/auth.ts`, which validates the Clerk session JWT (including `Authorization: Bearer <token>`) and sets `req.authContext.userId`.
 
 Organization-scoped JSON APIs also require header **`X-Organization-Id`** (UUID), validated in `src/middleware/organizationContext.ts`.
 
-- **Medications:** `PUT /api/medications/:id` — authenticated, tenant-scoped update. Runs in a single DB transaction: locks row, writes prior state to `medication_history`, updates `medications`, inserts `audit_log`, returns the updated row. Requires `DATABASE_URL` and migration **`005_audit_log_actor_text`** applied (Clerk subject ids are stored as text on `audit_log.actor_user_id`).
-- **Smoke test:** create (SQL) → update (curl) → verify — see [docs/medication-smoke-test.md](docs/medication-smoke-test.md) and `scripts/medication-smoke-test.sh`.
+- **Medications:** `PUT /api/medications/:id` — authenticated, tenant-isolated update. Required name field in DB is **`medication_name`** (renamed from `medication_display_name` in **`009_medications_rename_display_name`**). Nullable fields include **`ndc_10`** / **`ndc_11`** (`006_medications_ndc_10`), **`form`** (`007_medications_form`), and **`strength`** (`008_medications_strength`). Runs in a single DB transaction: locks row, writes prior state to `medication_history`, updates `medications`, inserts `audit_log`, returns the updated row. Requires `DATABASE_URL` and migrations through **`009_medications_rename_display_name`** (apply all pending `packages/database/migrations/`).
 
 ## Database
 
-SQL migrations live in `packages/database/migrations/` (numbered `*.sql` files). Applied migrations are recorded in the `schema_migrations` table.
+**Package:** `@soma-ehr/database` (`packages/database/`).
+
+All commands read **`DATABASE_URL`** from the **repository root** `.env` first, then `packages/database/.env` (see [Environment variables](#environment-variables)).
+
+| Command | Purpose |
+|---------|---------|
+| **`db:ensure`** | Ensures the **logical Postgres database named in `DATABASE_URL`** exists. Connects using the rest of your URL credentials to the **maintenance database** (**`postgres`**, or **`POSTGRES_MAINTENANCE_DATABASE`**). No-op if the target DB is already the maintenance DB, or if the database already exists. Names with hyphens (e.g. `soma-ehr`) are created as quoted Postgres identifiers. |
+| **`db:test`** | Opens a pooled connection and runs `SELECT …` — quick check that **`DATABASE_URL`** works. |
+| **`migrate`** | Applies pending `packages/database/migrations/*.sql` files in sorted order inside a transaction per file; records applied filenames in **`public.schema_migrations`** on **that same database**. **Does not create the Postgres server or the logical database.** |
+
+Recommended order **on a new machine**:
 
 ```bash
-# verify Postgres connectivity
+pnpm --filter @soma-ehr/database db:ensure   # skip if DATABASE_URL ends with …/postgres and that DB exists
 pnpm --filter @soma-ehr/database db:test
-
-# apply pending migrations
 pnpm --filter @soma-ehr/database migrate
+```
+
+Same targets from **`packages/database`**:
+
+```bash
+pnpm db:ensure
+pnpm db:test
+pnpm migrate
 ```
 
 Migrations run in order (sorted by filename) inside a transaction per file. Add new files such as `002_description.sql`.

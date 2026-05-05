@@ -5,7 +5,7 @@ End-to-end check that **`medications`**, **`medication_history`**, and **`audit_
 ## Prerequisites
 
 1. **Postgres** running; **`DATABASE_URL`** set (see repo root `.env`).
-2. **Migrations applied** through **`005_audit_log_actor_text`** (and earlier):  
+2. **Migrations applied** (latest `packages/database/migrations/`):  
    `pnpm --filter @soma-ehr/database migrate`
 3. **API running** (e.g. `pnpm --filter @soma-ehr/api dev`) with **`CLERK_PUBLISHABLE_KEY`** and **`CLERK_SECRET_KEY`**.
 4. A **Clerk session JWT** for a test user (**Bearer** token).
@@ -24,7 +24,7 @@ The API currently exposes **PUT** for updates only, so seed one row with **`psql
 INSERT INTO soma_ehr.medications (
   organization_id,
   patient_id,
-  medication_display_name,
+  medication_name,
   status
 ) VALUES (
   '11111111-1111-4111-8111-111111111111'::uuid,
@@ -53,10 +53,10 @@ curl -sS -X PUT "${BASE_URL}/api/medications/${MEDICATION_ID}" \
   -H "Authorization: Bearer ${CLERK_JWT}" \
   -H "X-Organization-Id: ${ORG_ID}" \
   -H "Content-Type: application/json" \
-  -d '{"medication_display_name":"Acetaminophen 500mg — updated sig"}'
+  -d '{"medication_name":"Acetaminophen 500mg — updated sig"}'
 ```
 
-You should get **HTTP 200** and a JSON body with the **updated** medication (new **`updated_at`**, new display name).
+You should get **HTTP 200** and a JSON body with the **updated** medication (new **`updated_at`**, new name).
 
 **Postman**
 
@@ -70,7 +70,7 @@ You should get **HTTP 200** and a JSON body with the **updated** medication (new
 
 ```json
 {
-  "medication_display_name": "Acetaminophen 500mg — updated sig"
+  "medication_name": "Acetaminophen 500mg — updated sig"
 }
 ```
 
@@ -82,13 +82,13 @@ Run with **`psql "$DATABASE_URL"`**, substituting **`MEDICATION_ID`**:
 
 ```sql
 -- A) medications row updated
-SELECT id, medication_display_name, updated_at
+SELECT id, medication_name, updated_at
 FROM soma_ehr.medications
 WHERE id = 'MEDICATION_ID'::uuid;
 
--- B) medication_history: prior snapshot (should include OLD display name in snapshot JSON)
+-- B) medication_history: prior snapshot (should include OLD name in snapshot JSON)
 SELECT id, medication_id,
-       snapshot->>'medication_display_name' AS snapshot_name,
+       snapshot->>'medication_name' AS snapshot_name,
        correlation_request_id,
        created_at
 FROM soma_ehr.medication_history
@@ -108,7 +108,7 @@ LIMIT 5;
 
 **Expectations**
 
-- **(A)** `medication_display_name` matches the **PUT** body; **`updated_at`** is newer than **`created_at`**.
+- **(A)** `medication_name` matches the **PUT** body; **`updated_at`** is newer than **`created_at`**.
 - **(B)** At least **one** history row; **`snapshot_name`** is the **previous** label (before update).
 - **(C)** At least one row with **`action` = `update`**, **`resource_type` = `medication`**; **`request_id`** matches **`x-request-id`** semantics and appears again in **`context`** as **`requestId`**; **`eventTimestampUtc`** is UTC ISO-8601.
 

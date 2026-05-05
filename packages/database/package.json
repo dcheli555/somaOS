@@ -3,12 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "db:ensure": "tsx scripts/ensure-database.ts",
     "migrate": "tsx scripts/migrate.ts",
     "db:test": "tsx scripts/test-connection.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
-    "pg": "^8.14.1"
+    "pg": "^8.14.1",
+    "pg-connection-string": "^2.7.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",

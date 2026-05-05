@@ -14,7 +14,7 @@ PATIENT_ID="${PATIENT_ID:-22222222-2222-4222-8222-222222222222}"
 echo "Inserting baseline medication (org=${ORG_ID}, patient=${PATIENT_ID})..."
 MED_ID="$(
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAc \
-    "INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_display_name, status)
+    "INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status)
      VALUES ('${ORG_ID}'::uuid, '${PATIENT_ID}'::uuid, 'Smoke baseline med', 'active')
      RETURNING id;" | tr -d ' '
 )"
@@ -33,7 +33,7 @@ HTTP_CODE="$(
     -H "Authorization: Bearer ${CLERK_JWT}" \
     -H "X-Organization-Id: ${ORG_ID}" \
     -H "Content-Type: application/json" \
-    -d '{"medication_display_name":"Smoke baseline med — updated"}'
+    -d '{"medication_name":"Smoke baseline med — updated"}'
 )"
 
 echo "HTTP ${HTTP_CODE}"
@@ -48,13 +48,13 @@ fi
 echo ""
 echo "=== Verification: medications (expect updated name) ==="
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
-  "SELECT id, medication_display_name, created_at, updated_at
+  "SELECT id, medication_name, created_at, updated_at
    FROM soma_ehr.medications WHERE id = '${MED_ID}'::uuid;"
 
 echo ""
 echo "=== Verification: medication_history (expect snapshot with OLD name) ==="
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
-  "SELECT id, snapshot->>'medication_display_name' AS snapshot_name, correlation_request_id, created_at
+  "SELECT id, snapshot->>'medication_name' AS snapshot_name, correlation_request_id, created_at
    FROM soma_ehr.medication_history
    WHERE medication_id = '${MED_ID}'::uuid
    ORDER BY created_at DESC;"

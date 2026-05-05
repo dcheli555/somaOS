@@ -1,6 +1,9 @@
 {
   "name": "soma-ehr",
   "private": true,
+  "scripts": {
+    "dev:stack": "bash scripts/start-dev.sh"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"

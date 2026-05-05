@@ -1,0 +1,78 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    sans-serif;
+  line-height: 1.5;
+  color: #0f172a;
+  background: #f8fafc;
+}
+
+#root {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.panel {
+  background: #fff;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  border: 1px solid #e2e8f0;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+button {
+  cursor: pointer;
+  font: inherit;
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #f1f5f9;
+}
+
+button:hover {
+  background: #e2e8f0;
+}
+
+textarea {
+  font: 0.8rem ui-monospace, monospace;
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+}
+
+code {
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+.error {
+  color: #b91c1c;
+  font-size: 0.9rem;
+}
+
+.hint {
+  font-size: 0.875rem;
+  color: #475569;
+  margin-top: 0.25rem;
+}
