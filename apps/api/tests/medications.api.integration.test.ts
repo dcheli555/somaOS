@@ -15,6 +15,22 @@ const ORG_A = "00000000-0001-4000-8000-000000000001";
 const ORG_B = "00000000-0010-4000-8000-000000000010";
 const PATIENT_ID = "00000000-0002-4000-8000-000000000002";
 
+/** Hard-delete a medication row in tests (append-only trigger would block CASCADE otherwise). */
+async function purgeMedicationRowForTest(medicationId: string): Promise<void> {
+  await pool.query(
+    `ALTER TABLE soma_ehr.medication_history DISABLE TRIGGER trg_medication_history_prevent_delete`,
+  );
+  try {
+    await pool.query(`DELETE FROM soma_ehr.medications WHERE id = $1`, [
+      medicationId,
+    ]);
+  } finally {
+    await pool.query(
+      `ALTER TABLE soma_ehr.medication_history ENABLE TRIGGER trg_medication_history_prevent_delete`,
+    );
+  }
+}
+
 function stubPutMedicationRequest(medicationId: string): Request {
   const path = `/api/medications/${medicationId}`;
   const headers = new Map<string, string>([
@@ -89,8 +105,11 @@ describe.skipIf(!process.env.DATABASE_URL)(
           } = await client.query<{
             snapshot: { medication_name?: string; version?: number };
             correlation_request_id: string | null;
+            prior_version: number | null;
+            change_type: string;
+            encounter_id: string | null;
           }>(
-            `SELECT snapshot, correlation_request_id
+            `SELECT snapshot, correlation_request_id, prior_version, change_type, encounter_id
              FROM soma_ehr.medication_history
              WHERE medication_id = $1
              ORDER BY created_at DESC
@@ -99,6 +118,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
           );
           expect(hist!.snapshot.medication_name).toBe("Seed medication name");
           expect(hist!.snapshot.version).toBe(1);
+          expect(hist!.prior_version).toBe(1);
+          expect(hist!.change_type).toBe("update");
+          expect(hist!.encounter_id).toBeNull();
           expect(hist!.correlation_request_id).toBe(requestId);
 
           const {
@@ -198,7 +220,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         }
       });
 
-      it("DELETE rejects when medication_history exists", async () => {
+      it("DELETE after PUT appends delete history and soft-deletes", async () => {
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
@@ -208,7 +230,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
             `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
              VALUES ($1, $2, $3, 'active', $4, $4)
              RETURNING id`,
-            [ORG_A, PATIENT_ID, "Delete blocked seed", TEST_ACTOR_USER_ID],
+            [ORG_A, PATIENT_ID, "Delete soft seed", TEST_ACTOR_USER_ID],
           );
           const medicationId = seed!.id;
 
@@ -222,16 +244,40 @@ describe.skipIf(!process.env.DATABASE_URL)(
             req: stubPutMedicationRequest(medicationId),
           });
 
-          await expect(
-            deleteMedicationForRequest(client, {
-              medicationId,
-              organizationId: ORG_A,
-              actorUserId: TEST_ACTOR_USER_ID,
-              requestId: randomUUID(),
-              expectedVersion: 2,
-              req: stubDeleteMedicationRequest(medicationId),
-            }),
-          ).rejects.toMatchObject({ code: "MEDICATION_HAS_HISTORY" });
+          const deleted = await deleteMedicationForRequest(client, {
+            medicationId,
+            organizationId: ORG_A,
+            actorUserId: TEST_ACTOR_USER_ID,
+            requestId: randomUUID(),
+            expectedVersion: 2,
+            req: stubDeleteMedicationRequest(medicationId),
+          });
+
+          expect(deleted.deleted_at).not.toBeNull();
+          expect(deleted.version).toBe(3);
+
+          const { rows: histRows } = await client.query<{
+            prior_version: number | null;
+            change_type: string;
+          }>(
+            `SELECT prior_version, change_type
+             FROM soma_ehr.medication_history
+             WHERE medication_id = $1
+             ORDER BY created_at ASC,
+               CASE change_type
+                 WHEN 'create' THEN 0
+                 WHEN 'update' THEN 1
+                 WHEN 'delete' THEN 2
+                 WHEN 'restore' THEN 3
+                 ELSE 4
+               END`,
+            [medicationId],
+          );
+          expect(histRows).toHaveLength(2);
+          expect(histRows[0]!.change_type).toBe("update");
+          expect(histRows[0]!.prior_version).toBe(1);
+          expect(histRows[1]!.change_type).toBe("delete");
+          expect(histRows[1]!.prior_version).toBe(2);
 
           await client.query("ROLLBACK");
         } catch (err) {
@@ -262,9 +308,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         });
 
         afterEach(async () => {
-          await pool.query(`DELETE FROM soma_ehr.medications WHERE id = $1`, [
-            medicationId,
-          ]);
+          await purgeMedicationRowForTest(medicationId);
         });
 
         it("GET returns JSON with version and ETag from version (not updated_at millis)", async () => {
@@ -404,7 +448,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           .set("If-Match", toEtag(1));
         expect(del.status).toBe(204);
 
-        await pool.query(`DELETE FROM soma_ehr.medications WHERE id = $1`, [id]);
+        await purgeMedicationRowForTest(id);
       });
 
       it("DELETE returns 428 without If-Match", async () => {
@@ -431,7 +475,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           .set("If-Match", toEtag(1));
         expect(cleanup.status).toBe(204);
 
-        await pool.query(`DELETE FROM soma_ehr.medications WHERE id = $1`, [id]);
+        await purgeMedicationRowForTest(id);
       });
 
       it("DELETE returns 412 when If-Match version stale, then succeeds", async () => {
@@ -458,7 +502,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           .set("If-Match", toEtag(1));
         expect(ok.status).toBe(204);
 
-        await pool.query(`DELETE FROM soma_ehr.medications WHERE id = $1`, [id]);
+        await purgeMedicationRowForTest(id);
       });
     });
   },

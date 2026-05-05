@@ -8,7 +8,14 @@ CREATE TABLE soma_ehr.medication_history (
   organization_id UUID NOT NULL,
   medication_id UUID NOT NULL
     REFERENCES soma_ehr.medications (id)
-    ON DELETE RESTRICT,
+    ON DELETE CASCADE,
+
+  prior_version INTEGER NULL,
+  change_type TEXT NOT NULL
+    CONSTRAINT medication_history_change_type_valid CHECK (
+      change_type IN ('create', 'update', 'delete', 'restore')
+    ),
+  encounter_id UUID NULL,
 
   -- Full-fidelity JSON document of medication state at this revision (versioned contract).
   snapshot JSONB NOT NULL,
@@ -30,6 +37,15 @@ CREATE TABLE soma_ehr.medication_history (
 
 COMMENT ON TABLE soma_ehr.medication_history IS
   'Append-only medication revision log; each row is an auditable point-in-time snapshot.';
+
+COMMENT ON COLUMN soma_ehr.medication_history.prior_version IS
+  'Value of soma_ehr.medications.version immediately before this history row; NULL when the event is create.';
+
+COMMENT ON COLUMN soma_ehr.medication_history.change_type IS
+  'create | update | delete | restore — which medication action produced this row.';
+
+COMMENT ON COLUMN soma_ehr.medication_history.encounter_id IS
+  'Encounter associated with the medication row at the time of this event.';
 
 COMMENT ON COLUMN soma_ehr.medication_history.snapshot IS
   'Structured JSON snapshot of the medication record at this revision; schema_version denotes interpretation.';

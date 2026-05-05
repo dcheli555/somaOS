@@ -7,6 +7,7 @@ import {
   insertAuditEvent,
 } from "../../services/auditService";
 import { parseIfMatch, toEtag } from "./etag";
+import { appendMedicationHistory } from "./medicationHistory";
 import { sendMedicationApiError } from "./medicationApiError";
 
 const idParamSchema = z.string().uuid();
@@ -89,7 +90,9 @@ const bodyFieldToColumn: Record<
   metadata: "metadata",
 };
 
-function rowToHistorySnapshot(row: MedicationRow): Record<string, unknown> {
+export function medicationRowToSnapshot(
+  row: MedicationRow,
+): Record<string, unknown> {
   return {
     id: row.id,
     organization_id: row.organization_id,
@@ -249,24 +252,18 @@ export async function updateMedicationForRequest(
     throw err;
   }
 
-  const snapshot = rowToHistorySnapshot(current);
+  const snapshot = medicationRowToSnapshot(current);
 
-  await client.query(
-    `INSERT INTO soma_ehr.medication_history (
-       organization_id,
-       medication_id,
-       snapshot,
-       snapshot_schema_version,
-       correlation_request_id
-     ) VALUES ($1, $2, $3::jsonb, $4, $5)`,
-    [
-      current.organization_id,
-      current.id,
-      snapshot,
-      1,
-      requestId,
-    ],
-  );
+  await appendMedicationHistory(client, {
+    organizationId: current.organization_id,
+    medicationId: current.id,
+    priorVersion: current.version,
+    changeType: "update",
+    encounterId: current.encounter_id,
+    snapshot,
+    snapshotSchemaVersion: 1,
+    correlationRequestId: requestId,
+  });
 
   const L = values.length;
   const updatedByParam = L + 1;

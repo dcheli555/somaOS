@@ -7,7 +7,9 @@ import {
   insertAuditEvent,
 } from "../../services/auditService";
 import { toEtag } from "./etag";
+import { appendMedicationHistory } from "./medicationHistory";
 import {
+  medicationRowToSnapshot,
   medicationUpdateBodySchema,
   serializeMedication,
   type MedicationRow,
@@ -112,6 +114,17 @@ export async function createMedicationForRequest(
     err.code = "MEDICATION_CREATE_FAILED";
     throw err;
   }
+
+  await appendMedicationHistory(client, {
+    organizationId: row.organization_id,
+    medicationId: row.id,
+    priorVersion: null,
+    changeType: "create",
+    encounterId: row.encounter_id,
+    snapshot: medicationRowToSnapshot(row),
+    snapshotSchemaVersion: 1,
+    correlationRequestId: requestId,
+  });
 
   await insertAuditEvent(client, {
     request: buildAuditRequestFromExpress(req, {

@@ -7,6 +7,8 @@ import {
   insertAuditEvent,
 } from "../../services/auditService";
 import { parseIfMatch, toEtag } from "./etag";
+import { appendMedicationHistory } from "./medicationHistory";
+import { medicationRowToSnapshot } from "./putMedication";
 import { sendMedicationApiError } from "./medicationApiError";
 import type { MedicationRow } from "./putMedication";
 
@@ -68,23 +70,16 @@ export async function deleteMedicationForRequest(
     throw err;
   }
 
-  const {
-    rows: [{ exists }],
-  } = await client.query<{ exists: boolean }>(
-    `SELECT EXISTS (
-       SELECT 1 FROM soma_ehr.medication_history
-       WHERE medication_id = $1
-     ) AS exists`,
-    [medicationId],
-  );
-
-  if (exists) {
-    const err = new Error("MEDICATION_HAS_HISTORY") as Error & {
-      code: string;
-    };
-    err.code = "MEDICATION_HAS_HISTORY";
-    throw err;
-  }
+  await appendMedicationHistory(client, {
+    organizationId: row.organization_id,
+    medicationId: row.id,
+    priorVersion: row.version,
+    changeType: "delete",
+    encounterId: row.encounter_id,
+    snapshot: medicationRowToSnapshot(row),
+    snapshotSchemaVersion: 1,
+    correlationRequestId: requestId,
+  });
 
   const del = await client.query<MedicationRow>(
     `UPDATE soma_ehr.medications
@@ -236,16 +231,6 @@ export async function deleteMedicationHandler(req: Request, res: Response) {
         412,
         "PRECONDITION_FAILED",
         "The resource has been modified. Refresh and try again.",
-        req.context.requestId,
-      );
-      return;
-    }
-    if (e.code === "MEDICATION_HAS_HISTORY") {
-      sendMedicationApiError(
-        res,
-        409,
-        "CONFLICT",
-        "Medication cannot be deleted: revision history exists (append-only retention)",
         req.context.requestId,
       );
       return;
