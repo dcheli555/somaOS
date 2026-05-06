@@ -12,6 +12,7 @@ export type UserContext = z.infer<typeof userContextSchema>;
 /** Per-request metadata and optional user binding. */
 export const requestContextSchema = z.object({
   requestId: z.string().min(1),
+  correlationId: z.string().min(1).optional(),
   traceId: z.string().optional(),
   user: userContextSchema.optional(),
 });

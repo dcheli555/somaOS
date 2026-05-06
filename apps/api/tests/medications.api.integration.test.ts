@@ -31,35 +31,35 @@ async function purgeMedicationRowForTest(medicationId: string): Promise<void> {
   }
 }
 
-function stubPutMedicationRequest(medicationId: string): Request {
-  const path = `/api/medications/${medicationId}`;
+/** Mirrors production `requestContextMiddleware` + auth for DB-layer audit tests. */
+function stubMedicationTxRequest(init: {
+  medicationId: string;
+  method: "PUT" | "DELETE";
+  organizationId?: string;
+  requestId: string;
+  correlationId?: string;
+}): Request {
+  const path = `/api/medications/${init.medicationId}`;
+  const organizationId = init.organizationId ?? ORG_A;
+  const correlationId = init.correlationId ?? randomUUID();
   const headers = new Map<string, string>([
     ["user-agent", "vitest-integration"],
   ]);
   return {
-    method: "PUT",
+    method: init.method,
     originalUrl: path,
     url: path,
     get(header: string) {
       return headers.get(header.toLowerCase()) ?? null;
     },
     socket: { remoteAddress: "127.0.0.1" },
-  } as unknown as Request;
-}
-
-function stubDeleteMedicationRequest(medicationId: string): Request {
-  const path = `/api/medications/${medicationId}`;
-  const headers = new Map<string, string>([
-    ["user-agent", "vitest-integration"],
-  ]);
-  return {
-    method: "DELETE",
-    originalUrl: path,
-    url: path,
-    get(header: string) {
-      return headers.get(header.toLowerCase()) ?? null;
+    context: {
+      correlationId,
+      requestId: init.requestId,
+      timestamp: new Date().toISOString(),
+      organizationId,
     },
-    socket: { remoteAddress: "127.0.0.1" },
+    authContext: { userId: TEST_ACTOR_USER_ID },
   } as unknown as Request;
 }
 
@@ -84,7 +84,14 @@ describe.skipIf(!process.env.DATABASE_URL)(
           );
 
           const medicationId = seed!.id;
-          const req = stubPutMedicationRequest(medicationId);
+          const correlationId = randomUUID();
+          const req = stubMedicationTxRequest({
+            medicationId,
+            method: "PUT",
+            organizationId: ORG_A,
+            requestId,
+            correlationId,
+          });
 
           const updated = await updateMedicationForRequest(client, {
             medicationId,
@@ -131,8 +138,13 @@ describe.skipIf(!process.env.DATABASE_URL)(
             resource_id: string;
             outcome: string;
             event_type: string;
+            correlation_id: string;
+            request_id: string;
+            organization_id: string | null;
+            actor_user_id: string | null;
           }>(
-            `SELECT action, resource_type, resource_id, outcome, event_type
+            `SELECT action, resource_type, resource_id, outcome, event_type,
+                    correlation_id, request_id, organization_id, actor_user_id
              FROM soma_ehr.audit_log
              WHERE resource_id = $1
              ORDER BY "timestamp" DESC
@@ -142,6 +154,10 @@ describe.skipIf(!process.env.DATABASE_URL)(
           expect(audit!.action).toBe("update");
           expect(audit!.outcome).toBe("success");
           expect(audit!.event_type).toBe("medication.update");
+          expect(audit!.correlation_id).toBe(correlationId);
+          expect(audit!.request_id).toBe(requestId);
+          expect(audit!.organization_id).toBe(ORG_A);
+          expect(audit!.actor_user_id).toBe(TEST_ACTOR_USER_ID);
 
           await client.query("ROLLBACK");
         } catch (err) {
@@ -165,16 +181,21 @@ describe.skipIf(!process.env.DATABASE_URL)(
             [ORG_A, PATIENT_ID, "Version stale seed", TEST_ACTOR_USER_ID],
           );
           const medicationId = seed!.id;
+          const rid = randomUUID();
 
           await expect(
             updateMedicationForRequest(client, {
               medicationId,
               organizationId: ORG_A,
               actorUserId: TEST_ACTOR_USER_ID,
-              requestId: randomUUID(),
+              requestId: rid,
               expectedVersion: 99,
               patch: { medication_name: "Should not apply" },
-              req: stubPutMedicationRequest(medicationId),
+              req: stubMedicationTxRequest({
+                medicationId,
+                method: "PUT",
+                requestId: rid,
+              }),
             }),
           ).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
 
@@ -201,15 +222,20 @@ describe.skipIf(!process.env.DATABASE_URL)(
             [ORG_A, PATIENT_ID, "Etag PUT ok", TEST_ACTOR_USER_ID],
           );
           const medicationId = seed!.id;
+          const rid = randomUUID();
 
           const updated = await updateMedicationForRequest(client, {
             medicationId,
             organizationId: ORG_A,
             actorUserId: TEST_ACTOR_USER_ID,
-            requestId: randomUUID(),
+            requestId: rid,
             expectedVersion: 1,
             patch: { dose_text: "5mg" },
-            req: stubPutMedicationRequest(medicationId),
+            req: stubMedicationTxRequest({
+              medicationId,
+              method: "PUT",
+              requestId: rid,
+            }),
           });
 
           expect(updated.dose_text).toBe("5mg");
@@ -237,24 +263,34 @@ describe.skipIf(!process.env.DATABASE_URL)(
             [ORG_A, PATIENT_ID, "Delete soft seed", TEST_ACTOR_USER_ID],
           );
           const medicationId = seed!.id;
+          const putRid = randomUUID();
+          const delRid = randomUUID();
 
           await updateMedicationForRequest(client, {
             medicationId,
             organizationId: ORG_A,
             actorUserId: TEST_ACTOR_USER_ID,
-            requestId: randomUUID(),
+            requestId: putRid,
             expectedVersion: 1,
             patch: { medication_name: "Second version" },
-            req: stubPutMedicationRequest(medicationId),
+            req: stubMedicationTxRequest({
+              medicationId,
+              method: "PUT",
+              requestId: putRid,
+            }),
           });
 
           const deleted = await deleteMedicationForRequest(client, {
             medicationId,
             organizationId: ORG_A,
             actorUserId: TEST_ACTOR_USER_ID,
-            requestId: randomUUID(),
+            requestId: delRid,
             expectedVersion: 2,
-            req: stubDeleteMedicationRequest(medicationId),
+            req: stubMedicationTxRequest({
+              medicationId,
+              method: "DELETE",
+              requestId: delRid,
+            }),
           });
 
           expect(deleted.deleted_at).not.toBeNull();

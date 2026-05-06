@@ -102,11 +102,7 @@ export async function deleteMedicationForRequest(
   }
 
   await insertAuditEvent(client, {
-    request: buildAuditRequestFromExpress(req, {
-      organizationId,
-      actorUserId,
-      requestId,
-    }),
+    request: buildAuditRequestFromExpress(req),
     event: {
       eventType: "medication.delete",
       action: "delete",

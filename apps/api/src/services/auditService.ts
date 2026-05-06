@@ -8,10 +8,12 @@ export const auditOutcomeSchema = z.enum(["success", "failure", "denied"]);
 export type AuditOutcome = z.infer<typeof auditOutcomeSchema>;
 
 /**
- * HTTP / job identity for an auditable action. `requestId` is mandatory on every insert.
+ * HTTP / job identity for an auditable action.
+ * `correlationId` and `requestId` are mandatory on every insert.
  */
 export const auditRequestContextSchema = z.object({
-  organizationId: z.string().uuid(),
+  correlationId: z.string().min(1),
+  organizationId: z.union([z.string().uuid(), z.null()]),
   actorUserId: z.union([z.string().min(1), z.null()]).optional(),
   requestId: z.string().min(1),
   actorIp: z.string().nullable().optional(),
@@ -61,11 +63,11 @@ function resolveEventInstant(occurredAtIso?: string): {
 
 /**
  * Derives transport-level audit fields from an Express request.
+ *
+ * Reads `organizationId`, `requestId`, and `correlationId` from `req.context`, and `actorUserId`
+ * from `req.authContext` when Clerk (or stub auth) populated it.
  */
-export function buildAuditRequestFromExpress(
-  req: Request,
-  identity: Pick<AuditRequestContext, "organizationId" | "actorUserId" | "requestId">,
-): AuditRequestContext {
+export function buildAuditRequestFromExpress(req: Request): AuditRequestContext {
   const forwarded = req.get("x-forwarded-for");
   const rawIp =
     typeof forwarded === "string" && forwarded.length > 0
@@ -80,7 +82,10 @@ export function buildAuditRequestFromExpress(
       : undefined;
 
   return auditRequestContextSchema.parse({
-    ...identity,
+    correlationId: req.context.correlationId,
+    organizationId: req.context.organizationId,
+    requestId: req.context.requestId,
+    actorUserId: req.authContext?.userId ?? null,
     actorIp: actorIp ?? null,
     userAgent: req.get("user-agent") ?? null,
     sessionId: req.get("x-session-id") ?? null,
@@ -131,6 +136,7 @@ export async function insertAuditEvent(
        resource_type,
        resource_id,
        reason,
+       correlation_id,
        request_id,
        session_id,
        source_ip,
@@ -141,7 +147,7 @@ export async function insertAuditEvent(
        new_value_hash,
        metadata
      ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::inet, $17, $18, $19::text[], $20, $21, $22::jsonb
+       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::inet, $18, $19, $20::text[], $21, $22, $23::jsonb
      )`,
     [
       forPg,
@@ -157,6 +163,7 @@ export async function insertAuditEvent(
       event.resourceType,
       event.resourceId,
       event.reason ?? null,
+      request.correlationId,
       request.requestId,
       request.sessionId ?? null,
       inet,

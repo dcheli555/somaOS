@@ -1,7 +1,12 @@
 export interface AppRequestContext {
-  /** Correlates logs and client retries; also sent as `x-request-id`. */
+  /**
+   * End-to-end correlation (from `X-Correlation-Id` when provided, otherwise generated).
+   * Echoed as `x-correlation-id` on the response.
+   */
+  correlationId: string;
+  /** Unique id for this single API invocation; echoed as `x-request-id` on the response. */
   requestId: string;
-  /** ISO 8601 timestamp when context was created (start of request handling). */
+  /** UTC ISO 8601 timestamp when context was created (start of request handling). */
   timestamp: string;
   /**
    * Active organization for this request, when multi-tenant resolution exists.

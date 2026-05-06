@@ -298,11 +298,7 @@ export async function updateMedicationForRequest(
   }
 
   await insertAuditEvent(client, {
-    request: buildAuditRequestFromExpress(req, {
-      organizationId,
-      actorUserId,
-      requestId,
-    }),
+    request: buildAuditRequestFromExpress(req),
     event: {
       eventType: "medication.update",
       action: "update",

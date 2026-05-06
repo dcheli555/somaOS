@@ -3,6 +3,7 @@ import express from "express";
 import { pool } from "../src/db/pool";
 import { requireOrganizationContext } from "../src/middleware/organizationContext";
 import { requestContextMiddleware } from "../src/middleware/requestContext";
+import { requestLoggingMiddleware } from "../src/middleware/requestLogging";
 import { createMedicationsApiRouter } from "../src/routes/medications";
 
 /** Stable id for audit + handler checks; not a real Clerk user. */
@@ -19,6 +20,7 @@ const testRequireAuth: RequestHandler = (req, _res, next) => {
 export function createMedicationsIntegrationApp() {
   const app = express();
   app.use(requestContextMiddleware);
+  app.use(requestLoggingMiddleware);
   app.use(express.json());
   app.use(
     "/api",
