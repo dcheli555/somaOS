@@ -35,6 +35,11 @@ export const requestLoggingMiddleware: RequestHandler = (req, res, next) => {
       record.organizationId = organizationId;
     }
 
+    const clerkOrganizationId = req.context.clerkOrganizationId;
+    if (clerkOrganizationId) {
+      record.clerkOrganizationId = clerkOrganizationId;
+    }
+
     const userId = req.authContext?.userId;
     if (userId) {
       record.userId = userId;

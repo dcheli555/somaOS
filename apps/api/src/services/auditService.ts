@@ -13,6 +13,7 @@ export type AuditOutcome = z.infer<typeof auditOutcomeSchema>;
  */
 export const auditRequestContextSchema = z.object({
   correlationId: z.string().min(1),
+  /** Internal tenant UUID: `organizations.id` (never Clerk `org_*`). */
   organizationId: z.union([z.string().uuid(), z.null()]),
   actorUserId: z.union([z.string().min(1), z.null()]).optional(),
   requestId: z.string().min(1),

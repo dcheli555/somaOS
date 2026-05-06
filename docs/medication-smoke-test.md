@@ -9,7 +9,9 @@ End-to-end check that **`medications`**, **`medication_history`**, and **`audit_
    `pnpm --filter @soma-ehr/database migrate`
 3. **API running** (e.g. `pnpm --filter @soma-ehr/api dev`) with **`CLERK_PUBLISHABLE_KEY`** and **`CLERK_SECRET_KEY`**.
 4. A **Clerk session JWT** for a test user (**Bearer** token).
-5. A test **`organization_id`** UUID that you will send as **`X-Organization-Id`** and use when inserting the medication (must match).
+5. A tenant row in **`soma_ehr.organizations`**: the **`id`** (UUID) must match **`medications.organization_id`** and the value you send as **`X-Organization-Id`** when it is a UUID. After migration **`016`**, dev seeds include **`00000000-0001-…`** and **`00000000-0010-…`**; for other UUIDs insert an organization first, e.g.
+   `INSERT INTO soma_ehr.organizations (id, clerk_organization_id, name) VALUES ('…'::uuid, 'legacy:…', '…') ON CONFLICT (id) DO NOTHING`.
+   When **`X-Organization-Id`** is a real Clerk **`org_*`**, the row must exist with that **`clerk_organization_id`**, or set **`SOMA_AUTO_PROVISION_ORGANIZATIONS=1`** to create it on first request.
 
 Optional: run the automated script (see below) after exporting env vars.
 

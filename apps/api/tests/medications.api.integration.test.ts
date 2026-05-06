@@ -1,7 +1,14 @@
 import type { Request } from "express";
 import { randomUUID } from "node:crypto";
 import request from "supertest";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
 import { deleteMedicationForRequest } from "../src/modules/medications/deleteMedication";
 import { toEtag } from "../src/modules/medications/etag";
 import { updateMedicationForRequest } from "../src/modules/medications/putMedication";
@@ -31,11 +38,16 @@ async function purgeMedicationRowForTest(medicationId: string): Promise<void> {
   }
 }
 
-/** Mirrors production `requestContextMiddleware` + auth for DB-layer audit tests. */
+/** Mirrors production request context shape for DB-layer audit tests (`legacy:<uuid>` matches seeded rows). */
+function stubLegacyClerkOrgBinding(internalOrganizationId: string): string {
+  return `legacy:${internalOrganizationId}`;
+}
+
 function stubMedicationTxRequest(init: {
   medicationId: string;
   method: "PUT" | "DELETE";
   organizationId?: string;
+  clerkOrganizationId?: string;
   requestId: string;
   correlationId?: string;
 }): Request {
@@ -58,6 +70,8 @@ function stubMedicationTxRequest(init: {
       requestId: init.requestId,
       timestamp: new Date().toISOString(),
       organizationId,
+      clerkOrganizationId:
+        init.clerkOrganizationId ?? stubLegacyClerkOrgBinding(organizationId),
     },
     authContext: { userId: TEST_ACTOR_USER_ID },
   } as unknown as Request;
@@ -331,6 +345,22 @@ describe.skipIf(!process.env.DATABASE_URL)(
 
     describe("HTTP (stub auth)", () => {
       const app = createMedicationsIntegrationApp();
+
+      /** HTTP stack resolves tenants via DB; pins rows even if migrations predate org seeds. */
+      beforeAll(async () => {
+        await pool.query(
+          `INSERT INTO soma_ehr.organizations (id, clerk_organization_id, name)
+           VALUES ($1::uuid, $2, 'Integration tenant A'),
+                  ($3::uuid, $4, 'Integration tenant B')
+           ON CONFLICT (id) DO NOTHING`,
+          [
+            ORG_A,
+            `legacy:${ORG_A}`,
+            ORG_B,
+            `legacy:${ORG_B}`,
+          ],
+        );
+      });
 
       describe("with a seeded medication", () => {
         let medicationId: string;

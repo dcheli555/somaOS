@@ -2,7 +2,7 @@
  * Derive the tenant identifier that the session is allowed to act as.
  *
  * - If `tenantClaimName` is set: read that key from `sessionClaims` (JWT custom claim).
- *   Use when your DB `organization_id` is a UUID (or other id) that differs from Clerk's `org_…` id.
+ *   Matches internal tenant UUID (`soma_ehr.organizations.id`).
  * - Otherwise: use Clerk's active-organization id (`auth.orgId`).
  */
 export function effectiveTenantIdFromClerkSession(

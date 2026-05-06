@@ -5,10 +5,11 @@ export const CORRELATION_ID_HEADER = "x-correlation-id";
 export const REQUEST_ID_HEADER = "x-request-id";
 
 /**
- * Ensures each request has `req.context` (correlationId, requestId, timestamp, organizationId)
- * and echoes correlation and request identifiers on the response.
+ * Ensures each request has `req.context` (tracing + placeholder org keys)
+ * and echoes correlation/request ids on the response.
  *
- * Mount early in the Express stack (before auth and route handlers).
+ * `organizationId` / `clerkOrganizationId` are filled by `resolveOrganizationContext`
+ * on scoped routes once `X-Organization-Id` is resolved against `organizations`.
  */
 export const requestContextMiddleware: RequestHandler = (req, res, next) => {
   const rawCorrelation = req.get(CORRELATION_ID_HEADER);
@@ -18,13 +19,13 @@ export const requestContextMiddleware: RequestHandler = (req, res, next) => {
       : randomUUID();
   const requestId = randomUUID();
   const timestamp = new Date().toISOString();
-  const organizationId = null;
 
   req.context = {
     correlationId,
     requestId,
     timestamp,
-    organizationId,
+    organizationId: null,
+    clerkOrganizationId: null,
   };
 
   res.setHeader(CORRELATION_ID_HEADER, correlationId);

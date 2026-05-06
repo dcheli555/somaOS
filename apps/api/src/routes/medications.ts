@@ -1,6 +1,6 @@
 import { Router, type RequestHandler } from "express";
 import { requireAuthContext } from "../middleware/auth";
-import { requireOrganizationContext } from "../middleware/organizationContext";
+import { resolveOrganizationContext } from "../middleware/organizationContext";
 import { requireTenantMembership } from "../middleware/requireTenantMembership";
 import { deleteMedicationHandler } from "../modules/medications/deleteMedication";
 import { getMedicationHandler } from "../modules/medications/getMedication";
@@ -18,8 +18,8 @@ function medicationResourceRouter(): Router {
 
 /**
  * Mount meds routes behind an explicit auth chain:
- * Production: Clerk {@link requireAuthContext}, org header parsing, {@link requireTenantMembership}.
- * Tests: stub auth + org header only (no Clerk JWT — omit {@link requireTenantMembership}).
+ * Production: `requireAuthContext`, `resolveOrganizationContext`, `requireTenantMembership`.
+ * Tests: stub auth + `resolveOrganizationContext` only (no Clerk JWT / no tenant membership middleware).
  */
 export function createMedicationsApiRouter(
   authChain: RequestHandler[],
@@ -34,6 +34,6 @@ export function createMedicationsApiRouter(
 
 export const medicationsApiRouter = createMedicationsApiRouter([
   requireAuthContext,
-  requireOrganizationContext,
+  resolveOrganizationContext,
   requireTenantMembership,
 ]);

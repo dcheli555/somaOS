@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import express from "express";
 import { pool } from "../src/db/pool";
-import { requireOrganizationContext } from "../src/middleware/organizationContext";
+import { resolveOrganizationContext } from "../src/middleware/organizationContext";
 import { requestContextMiddleware } from "../src/middleware/requestContext";
 import { requestLoggingMiddleware } from "../src/middleware/requestLogging";
 import { createMedicationsApiRouter } from "../src/routes/medications";
@@ -24,7 +24,7 @@ export function createMedicationsIntegrationApp() {
   app.use(express.json());
   app.use(
     "/api",
-    createMedicationsApiRouter([testRequireAuth, requireOrganizationContext]),
+    createMedicationsApiRouter([testRequireAuth, resolveOrganizationContext]),
   );
   return app;
 }

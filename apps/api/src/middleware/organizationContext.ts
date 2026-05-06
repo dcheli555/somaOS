@@ -1,22 +1,19 @@
 import type { RequestHandler } from "express";
-import { z } from "zod";
-
-/** Tenant key: internal UUID (postgres) or Clerk organization id (`org_…`). */
-const orgHeaderSchema = z.union([
-  z.string().uuid(),
-  z
-    .string()
-    .regex(
-      /^org_[A-Za-z0-9]+$/,
-      "must be a UUID or Clerk organization id (org_…)",
-    ),
-]);
+import { resolveOrganizationFromHeader } from "../organizations/resolveOrganizationFromHeader";
 
 /**
- * Requires `X-Organization-Id` (tenant) on the request and aligns `req.context.organizationId`.
- * Run after `requireAuthContext` on organization-scoped routes.
+ * Reads `X-Organization-Id` (UUID = internal `organizations.id`, or Clerk `org_*`),
+ * resolves the canonical tenant row, and sets `req.context`:
+ * — `organizationId`: internal UUID (all domain SQL uses this FK)
+ * — `clerkOrganizationId`: external binding (membership verification with Clerk)
+ *
+ * Keeps Postgres vendor-neutral while still carrying Clerk identifiers for auth checks.
  */
-export const requireOrganizationContext: RequestHandler = (req, res, next) => {
+export const resolveOrganizationContext: RequestHandler = async (
+  req,
+  res,
+  next,
+) => {
   const raw = req.get("x-organization-id");
   if (!raw?.trim()) {
     res.status(400).json({
@@ -25,14 +22,29 @@ export const requireOrganizationContext: RequestHandler = (req, res, next) => {
     return;
   }
 
-  const parsed = orgHeaderSchema.safeParse(raw.trim());
-  if (!parsed.success) {
-    res.status(400).json({
-      error: "Invalid X-Organization-Id (expected UUID or Clerk org id org_…)",
-    });
-    return;
-  }
+  try {
+    const resolved = await resolveOrganizationFromHeader(raw);
+    if (!resolved) {
+      res.status(403).json({
+        error: {
+          code: "ORGANIZATION_UNKNOWN",
+          message:
+            "Unknown organization. Ensure the tenant is registered or use a valid Clerk organization.",
+        },
+      });
+      return;
+    }
 
-  req.context.organizationId = parsed.data;
-  next();
+    req.context.organizationId = resolved.organizationId;
+    req.context.clerkOrganizationId = resolved.clerkOrganizationId;
+    next();
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      error: {
+        code: "INTERNAL_ERROR",
+        message: "Could not resolve organization.",
+      },
+    });
+  }
 };

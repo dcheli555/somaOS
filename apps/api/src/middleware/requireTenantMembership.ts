@@ -13,14 +13,11 @@ function isLikelyTransientClerkError(err: unknown): boolean {
 }
 
 /**
- * After `requireAuthContext` + `requireOrganizationContext`, ensures `X-Organization-Id`
- * is backed by Clerk **organization membership** (Backend API), not only the active JWT org.
+ * After `requireAuthContext` + `resolveOrganizationContext`, verifies the authenticated
+ * user belongs to this tenant according to Clerk.
  *
- * — `org_…` header: user must be in that Clerk organization (`organizations.getOrganizationMembershipList`).
- * — UUID header: user's organizations are scanned (`users.getOrganizationMembershipList`, paginated) until one
- *   has matching `organization.public_metadata[CLERK_ORG_METADATA_TENANT_KEY]` (default `tenant_uuid`).
- *
- * When the header equals the session's active `org_id` (`org_…` only), the Backend API membership call is skipped.
+ * — Real Clerk `org_*` stored on the row → membership on that Clerk org (Backend API shortcut when active session org matches header).
+ * — Otherwise (e.g. `legacy:*` binds or future non-Clerk keys) → scan memberships comparing `organizationId` UUID to metadata.
  */
 export const requireTenantMembership: RequestHandler = async (
   req,
@@ -28,7 +25,9 @@ export const requireTenantMembership: RequestHandler = async (
   next,
 ) => {
   const organizationId = req.context.organizationId;
-  if (!organizationId) {
+  const clerkOrganizationId = req.context.clerkOrganizationId;
+
+  if (!organizationId || !clerkOrganizationId) {
     sendMedicationApiError(
       res,
       500,
@@ -53,18 +52,27 @@ export const requireTenantMembership: RequestHandler = async (
 
   try {
     if (
-      organizationId.startsWith("org_") &&
-      auth.orgId === organizationId
+      clerkOrganizationId.startsWith("org_") &&
+      auth.orgId === clerkOrganizationId
     ) {
       next();
       return;
     }
 
-    const allowed = await userMembershipAllowsTenant(clerkClient, {
-      userId: auth.userId,
-      tenantIdHeader: organizationId,
-      metadataKey: orgMetadataTenantKeyFromEnv(),
-    });
+    let allowed: boolean;
+    if (clerkOrganizationId.startsWith("org_")) {
+      allowed = await userMembershipAllowsTenant(clerkClient, {
+        userId: auth.userId,
+        tenantIdHeader: clerkOrganizationId,
+        metadataKey: orgMetadataTenantKeyFromEnv(),
+      });
+    } else {
+      allowed = await userMembershipAllowsTenant(clerkClient, {
+        userId: auth.userId,
+        tenantIdHeader: organizationId,
+        metadataKey: orgMetadataTenantKeyFromEnv(),
+      });
+    }
 
     if (!allowed) {
       sendMedicationApiError(

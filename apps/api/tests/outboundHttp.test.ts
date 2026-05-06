@@ -16,6 +16,7 @@ describe("outboundHttp tracing headers", () => {
         requestId: "req-1",
         timestamp: "",
         organizationId: null,
+        clerkOrganizationId: null,
       },
     } as unknown as Request;
 
@@ -45,6 +46,7 @@ describe("outboundHttp fetch wrappers", () => {
         requestId: "r",
         timestamp: "",
         organizationId: null,
+        clerkOrganizationId: null,
       },
     } as unknown as Request;
 
