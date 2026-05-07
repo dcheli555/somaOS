@@ -1,5 +1,5 @@
 {
-  "name": "soma-ehr",
+  "name": "soma-os",
   "private": true,
   "scripts": {
     "dev:stack": "bash scripts/start-dev.sh"

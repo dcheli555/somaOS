@@ -1,15 +1,15 @@
-# soma-ehr
+# somaOS
 
-pnpm monorepo for the Soma EHR project.
+pnpm monorepo for Soma OS.
 
 ## Layout
 
 | Path | Package | Role |
 |------|---------|------|
-| `apps/api` | `@soma-ehr/api` | HTTP API (Express, TypeScript); integration tests **`pnpm --filter @soma-ehr/api test`** (`DATABASE_URL` + migrated DB) |
-| `apps/clerk-dev` | `@soma-ehr/clerk-dev` | Minimal Vite + Clerk UI for **JWT** and **`X-Organization-Id`** (Phase 3 / curl testing) |
-| `packages/database` | `@soma-ehr/database` | Postgres client, SQL migrations |
-| `packages/shared` | `@soma-ehr/shared` | Shared types and utilities |
+| `apps/api` | `@soma-os/api` | HTTP API (Express, TypeScript); integration tests **`pnpm --filter @soma-os/api test`** (`DATABASE_URL` + migrated DB) |
+| `apps/clerk-dev` | `@soma-os/clerk-dev` | Minimal Vite + Clerk UI for **JWT** and **`X-Organization-Id`** (Phase 3 / curl testing) |
+| `packages/database` | `@soma-os/database` | Postgres client, SQL migrations |
+| `packages/shared` | `@soma-os/shared` | Shared types and utilities |
 
 ## Prerequisites
 
@@ -52,7 +52,7 @@ Run Postgres on port `5432` with a named volume so data survives container resta
 ```bash
 docker run --name soma-postgres \
   -e POSTGRES_PASSWORD=localdev \
-  -e POSTGRES_DB=soma_ehr \
+  -e POSTGRES_DB=soma_os \
   -p 5432:5432 \
   -v soma_pgdata:/var/lib/postgresql/data \
   -d postgres:16
@@ -61,14 +61,14 @@ docker run --name soma-postgres \
 Set `DATABASE_URL` in the repo root `.env` (adjust user/password if you change them):
 
 ```text
-postgresql://postgres:localdev@localhost:5432/soma_ehr
+postgresql://postgres:localdev@localhost:5432/soma_os
 ```
 
-Then run [database migrations](#database) (`pnpm --filter @soma-ehr/database migrate`). Stop/remove the container when done: `docker stop soma-postgres` (remove with `docker rm soma-postgres` after stop).
+Then run [database migrations](#database) (`pnpm --filter @soma-os/database migrate`). Stop/remove the container when done: `docker stop soma-postgres` (remove with `docker rm soma-postgres` after stop).
 
 ### Docker Compose + dev stack (recommended)
 
-Root [`compose.yml`](compose.yml) runs the same Postgres image with defaults **`POSTGRES_PASSWORD=localdev`**, **`POSTGRES_DB=soma_ehr`**, port **5432**. Point **`DATABASE_URL`** at that database (example in the previous block).
+Root [`compose.yml`](compose.yml) runs the same Postgres image with defaults **`POSTGRES_PASSWORD=localdev`**, **`POSTGRES_DB=soma_os`**, port **5432**. Point **`DATABASE_URL`** at that database (example in the previous block).
 
 From the repo root:
 
@@ -76,7 +76,7 @@ From the repo root:
 pnpm dev:stack
 ```
 
-This script ([`scripts/start-dev.sh`](scripts/start-dev.sh)): starts **`docker compose up -d postgres`**, waits until **`pg_isready`** succeeds, runs **`pnpm --filter @soma-ehr/database db:test`** and **`migrate`**, then starts **`@soma-ehr/api`**. Optional: **`START_CLERK_DEV=1 pnpm dev:stack`** also runs **`clerk-dev`** on port **5173** in the background until you stop the API (**Ctrl+C**).
+This script ([`scripts/start-dev.sh`](scripts/start-dev.sh)): starts **`docker compose up -d postgres`**, waits until **`pg_isready`** succeeds, runs **`pnpm --filter @soma-os/database db:test`** and **`migrate`**, then starts **`@soma-os/api`**. Optional: **`START_CLERK_DEV=1 pnpm dev:stack`** also runs **`clerk-dev`** on port **5173** in the background until you stop the API (**Ctrl+C**).
 
 **Env toggles** (see comments in the script): **`SKIP_DOCKER=1`**, **`SKIP_MIGRATE=1`**, **`SKIP_DB_CHECK=1`**, **`SKIP_PG_WAIT=1`** (with **`SKIP_DOCKER=1`**), **`POSTGRES_DB` / `POSTGRES_PASSWORD`** for Compose.
 
@@ -98,12 +98,12 @@ Create a `.env` at the **repository root** (or under `packages/database/` for pa
 
 | Variable | Used by | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | `@soma-ehr/database`, `@soma-ehr/api` | Postgres connection string (API uses its own pool for transactional routes) |
-| `PORT` | `@soma-ehr/api` | HTTP port (default `3000`) |
-| `CLERK_PUBLISHABLE_KEY` | `@soma-ehr/api` | Clerk publishable key (JWT verification / middleware; see [Clerk Dashboard](https://dashboard.clerk.com/)) |
-| `CLERK_SECRET_KEY` | `@soma-ehr/api` | Clerk secret key (backend; keep server-side only; tenant membership checks call the Clerk Backend API) |
-| `CLERK_ORG_METADATA_TENANT_KEY` | `@soma-ehr/api` | Optional. When **`X-Organization-Id`** is a **UUID**, the API verifies membership by paging the user’s organizations and matching **`public_metadata[<key>]`** on each org (default key **`tenant_uuid`**). Populate that metadata in Clerk so it matches **`soma_ehr.organizations.id`**. Ignored when the header is a Clerk **`org_…`** id. |
-| `SOMA_AUTO_PROVISION_ORGANIZATIONS` | `@soma-ehr/api` | When set to **`1`**, a missing **`org_*`** in **`soma_ehr.organizations`** gets a new row (internal UUID generated) on first resolution. Off by default — unknown tenants return **403**. |
+| `DATABASE_URL` | `@soma-os/database`, `@soma-os/api` | Postgres connection string (API uses its own pool for transactional routes) |
+| `PORT` | `@soma-os/api` | HTTP port (default `3000`) |
+| `CLERK_PUBLISHABLE_KEY` | `@soma-os/api` | Clerk publishable key (JWT verification / middleware; see [Clerk Dashboard](https://dashboard.clerk.com/)) |
+| `CLERK_SECRET_KEY` | `@soma-os/api` | Clerk secret key (backend; keep server-side only; tenant membership checks call the Clerk Backend API) |
+| `CLERK_ORG_METADATA_TENANT_KEY` | `@soma-os/api` | Optional. When **`X-Organization-Id`** is a **UUID**, the API verifies membership by paging the user’s organizations and matching **`public_metadata[<key>]`** on each org (default key **`tenant_uuid`**). Populate that metadata in Clerk so it matches **`soma_os.organizations.id`**. Ignored when the header is a Clerk **`org_…`** id. |
+| `SOMA_AUTO_PROVISION_ORGANIZATIONS` | `@soma-os/api` | When set to **`1`**, a missing **`org_*`** in **`soma_os.organizations`** gets a new row (internal UUID generated) on first resolution. Off by default — unknown tenants return **403**. |
 
 Domain tables use **`organizations.id`** (UUID FKs only). Clerk **`org_*`** values live in **`organizations.clerk_organization_id`** (`resolveOrganizationContext`).
 
@@ -115,7 +115,7 @@ The database package loads root `.env` first, then `packages/database/.env`, so 
 
 ```bash
 # from repo root
-pnpm --filter @soma-ehr/api dev
+pnpm --filter @soma-os/api dev
 
 # or from apps/api
 pnpm dev
@@ -160,22 +160,35 @@ Organization-scoped APIs require **`X-Organization-Id`** (internal UUID = **`org
 
 ## Database
 
-**Package:** `@soma-ehr/database` (`packages/database/`).
+**Package:** `@soma-os/database` (`packages/database/`).
 
 All commands read **`DATABASE_URL`** from the **repository root** `.env` first, then `packages/database/.env` (see [Environment variables](#environment-variables)).
 
 | Command | Purpose |
 |---------|---------|
-| **`db:ensure`** | Ensures the **logical Postgres database named in `DATABASE_URL`** exists. Connects using the rest of your URL credentials to the **maintenance database** (**`postgres`**, or **`POSTGRES_MAINTENANCE_DATABASE`**). No-op if the target DB is already the maintenance DB, or if the database already exists. Names with hyphens (e.g. `soma-ehr`) are created as quoted Postgres identifiers. |
+| **`db:ensure`** | Ensures the **logical Postgres database named in `DATABASE_URL`** exists. Connects using the rest of your URL credentials to the **maintenance database** (**`postgres`**, or **`POSTGRES_MAINTENANCE_DATABASE`**). No-op if the target DB is already the maintenance DB, or if the database already exists. Names with hyphens (e.g. `soma-os`) are created as quoted Postgres identifiers. |
 | **`db:test`** | Opens a pooled connection and runs `SELECT …` — quick check that **`DATABASE_URL`** works. |
-| **`migrate`** | Applies pending `packages/database/migrations/*.sql` files in sorted order inside a transaction per file; records applied filenames in **`public.schema_migrations`** on **that same database**. **Does not create the Postgres server or the logical database.** |
+| **`migrate`** | Applies pending `packages/database/migrations/*.sql` files in sorted order inside a transaction per file; records applied filenames in **`public.schema_migrations`** on **that same database**. **Does not create the Postgres server or the logical database.** Migration **`017`** renames the legacy schema **`soma_ehr` → `soma_os`** on databases built before this rename (no-op otherwise). |
+
+### Upgrade from soma-ehr (schema and `DATABASE_URL`)
+
+Two ideas are easy to confuse:
+
+- **Postgres schema** (namespace for tables): was **`soma_ehr`**, now **`soma_os`**. After you pull these changes, run **`pnpm --filter @soma-os/database migrate`**. **`017`** performs **`ALTER SCHEMA soma_ehr RENAME TO soma_os`** on the database named in **`DATABASE_URL`**, whenever the legacy schema still exists.
+- **Logical database name** (the path segment in **`DATABASE_URL`**, e.g. `…5432/soma_os`): independent of the schema rename. Compose now defaults **`POSTGRES_DB`** to **`soma_os`** for **new** volumes only. An existing Docker volume was initialized once; it still contains whatever database name it was created with (often **`soma_ehr`**), and changing **`compose.yml` does not rename that database.
+
+**Practical checklist**
+
+1. Point **`DATABASE_URL`** at the database you actually use (open **`psql`** or check how the container was first created).
+2. Run **`migrate`** so **`017`** runs; your tables should live under **`soma_os.*`** afterward.
+3. If you want the **default** dev database to be **`soma_os`** and you are fine losing local data: **`docker compose down -v`**, then **`docker compose up -d`** and **`migrate`** again (or run **`pnpm dev:stack`** as described under **Docker Compose + dev stack (recommended)** earlier in this readme).
 
 Recommended order **on a new machine**:
 
 ```bash
-pnpm --filter @soma-ehr/database db:ensure   # skip if DATABASE_URL ends with …/postgres and that DB exists
-pnpm --filter @soma-ehr/database db:test
-pnpm --filter @soma-ehr/database migrate
+pnpm --filter @soma-os/database db:ensure   # skip if DATABASE_URL ends with …/postgres and that DB exists
+pnpm --filter @soma-os/database db:test
+pnpm --filter @soma-os/database migrate
 ```
 
 Same targets from **`packages/database`**:

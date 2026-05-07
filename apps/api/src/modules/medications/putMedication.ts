@@ -217,7 +217,7 @@ export async function updateMedicationForRequest(
 
   const lock = await client.query<MedicationRow>(
     `SELECT *
-     FROM soma_ehr.medications
+     FROM soma_os.medications
      WHERE id = $1 AND deleted_at IS NULL
      FOR UPDATE`,
     [medicationId],
@@ -272,7 +272,7 @@ export async function updateMedicationForRequest(
   const orgParam = L + 3;
   const verParam = L + 4;
   const updateSql = `
-    UPDATE soma_ehr.medications
+    UPDATE soma_os.medications
     SET ${fragments.join(", ")},
         "updated_by" = $${updatedByParam},
         "version" = "version" + 1,

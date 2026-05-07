@@ -1,5 +1,5 @@
 {
-  "name": "@soma-ehr/shared",
+  "name": "@soma-os/shared",
   "version": "0.0.0",
   "private": true,
   "type": "module",

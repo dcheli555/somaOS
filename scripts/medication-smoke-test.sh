@@ -14,7 +14,7 @@ PATIENT_ID="${PATIENT_ID:-22222222-2222-4222-8222-222222222222}"
 echo "Inserting baseline medication (org=${ORG_ID}, patient=${PATIENT_ID})..."
 MED_ID="$(
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -tAc \
-    "INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
+    "INSERT INTO soma_os.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
      VALUES ('${ORG_ID}'::uuid, '${PATIENT_ID}'::uuid, 'Smoke baseline med', 'active', 'smoke_test_user', 'smoke_test_user')
      RETURNING id;" | tr -d ' '
 )"
@@ -49,13 +49,13 @@ echo ""
 echo "=== Verification: medications (expect updated name) ==="
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
   "SELECT id, medication_name, created_at, updated_at
-   FROM soma_ehr.medications WHERE id = '${MED_ID}'::uuid;"
+   FROM soma_os.medications WHERE id = '${MED_ID}'::uuid;"
 
 echo ""
 echo "=== Verification: medication_history (expect snapshot with OLD name) ==="
 psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
   "SELECT id, snapshot->>'medication_name' AS snapshot_name, correlation_request_id, created_at
-   FROM soma_ehr.medication_history
+   FROM soma_os.medication_history
    WHERE medication_id = '${MED_ID}'::uuid
    ORDER BY created_at DESC;"
 
@@ -65,11 +65,11 @@ psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c \
   "SELECT event_type, action, outcome, resource_type, resource_id, request_id,
           \"timestamp\",
           metadata->>'domain' AS metadata_domain
-   FROM soma_ehr.audit_log
+   FROM soma_os.audit_log
    WHERE resource_id = '${MED_ID}'::uuid
    ORDER BY \"timestamp\" DESC
    LIMIT 5;"
 
 echo ""
 echo "Done. Clean up test medication (cascades medication_history; audit_log is append-only):"
-echo "  psql \"\$DATABASE_URL\" -c \"DELETE FROM soma_ehr.medications WHERE id = '${MED_ID}'::uuid;\""
+echo "  psql \"\$DATABASE_URL\" -c \"DELETE FROM soma_os.medications WHERE id = '${MED_ID}'::uuid;\""

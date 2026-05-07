@@ -25,15 +25,15 @@ const PATIENT_ID = "00000000-0002-4000-8000-000000000002";
 /** Hard-delete a medication row in tests (append-only trigger would block CASCADE otherwise). */
 async function purgeMedicationRowForTest(medicationId: string): Promise<void> {
   await pool.query(
-    `ALTER TABLE soma_ehr.medication_history DISABLE TRIGGER trg_medication_history_prevent_delete`,
+    `ALTER TABLE soma_os.medication_history DISABLE TRIGGER trg_medication_history_prevent_delete`,
   );
   try {
-    await pool.query(`DELETE FROM soma_ehr.medications WHERE id = $1`, [
+    await pool.query(`DELETE FROM soma_os.medications WHERE id = $1`, [
       medicationId,
     ]);
   } finally {
     await pool.query(
-      `ALTER TABLE soma_ehr.medication_history ENABLE TRIGGER trg_medication_history_prevent_delete`,
+      `ALTER TABLE soma_os.medication_history ENABLE TRIGGER trg_medication_history_prevent_delete`,
     );
   }
 }
@@ -91,7 +91,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           const {
             rows: [seed],
           } = await client.query<{ id: string }>(
-            `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
+            `INSERT INTO soma_os.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
              VALUES ($1, $2, $3, 'active', $4, $4)
              RETURNING id`,
             [ORG_A, PATIENT_ID, "Seed medication name", TEST_ACTOR_USER_ID],
@@ -131,7 +131,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
             encounter_id: string | null;
           }>(
             `SELECT snapshot, correlation_request_id, prior_version, change_type, encounter_id
-             FROM soma_ehr.medication_history
+             FROM soma_os.medication_history
              WHERE medication_id = $1
              ORDER BY created_at DESC
              LIMIT 1`,
@@ -159,7 +159,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           }>(
             `SELECT action, resource_type, resource_id, outcome, event_type,
                     correlation_id, request_id, organization_id, actor_user_id
-             FROM soma_ehr.audit_log
+             FROM soma_os.audit_log
              WHERE resource_id = $1
              ORDER BY "timestamp" DESC
              LIMIT 1`,
@@ -189,7 +189,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           const {
             rows: [seed],
           } = await client.query<{ id: string }>(
-            `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
+            `INSERT INTO soma_os.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
              VALUES ($1, $2, $3, 'active', $4, $4)
              RETURNING id`,
             [ORG_A, PATIENT_ID, "Version stale seed", TEST_ACTOR_USER_ID],
@@ -230,7 +230,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           const {
             rows: [seed],
           } = await client.query<{ id: string }>(
-            `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
+            `INSERT INTO soma_os.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
              VALUES ($1, $2, $3, 'active', $4, $4)
              RETURNING id`,
             [ORG_A, PATIENT_ID, "Etag PUT ok", TEST_ACTOR_USER_ID],
@@ -271,7 +271,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           const {
             rows: [seed],
           } = await client.query<{ id: string }>(
-            `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
+            `INSERT INTO soma_os.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
              VALUES ($1, $2, $3, 'active', $4, $4)
              RETURNING id`,
             [ORG_A, PATIENT_ID, "Delete soft seed", TEST_ACTOR_USER_ID],
@@ -315,7 +315,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
             change_type: string;
           }>(
             `SELECT prior_version, change_type
-             FROM soma_ehr.medication_history
+             FROM soma_os.medication_history
              WHERE medication_id = $1
              ORDER BY created_at ASC,
                CASE change_type
@@ -349,7 +349,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
       /** HTTP stack resolves tenants via DB; pins rows even if migrations predate org seeds. */
       beforeAll(async () => {
         await pool.query(
-          `INSERT INTO soma_ehr.organizations (id, clerk_organization_id, name)
+          `INSERT INTO soma_os.organizations (id, clerk_organization_id, name)
            VALUES ($1::uuid, $2, 'Integration tenant A'),
                   ($3::uuid, $4, 'Integration tenant B')
            ON CONFLICT (id) DO NOTHING`,
@@ -369,7 +369,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           const {
             rows: [row],
           } = await pool.query<{ id: string }>(
-            `INSERT INTO soma_ehr.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
+            `INSERT INTO soma_os.medications (organization_id, patient_id, medication_name, status, created_by, updated_by)
              VALUES ($1, $2, $3, 'active', $4, $4)
              RETURNING id`,
             [ORG_A, PATIENT_ID, "HTTP seed name", TEST_ACTOR_USER_ID],
@@ -402,13 +402,13 @@ describe.skipIf(!process.env.DATABASE_URL)(
           expect(res.status).toBe(403);
 
           const { rows: hist } = await pool.query(
-            `SELECT 1 FROM soma_ehr.medication_history WHERE medication_id = $1`,
+            `SELECT 1 FROM soma_os.medication_history WHERE medication_id = $1`,
             [medicationId],
           );
           expect(hist.length).toBe(0);
 
           const { rows: meds } = await pool.query<{ medication_name: string }>(
-            `SELECT medication_name FROM soma_ehr.medications WHERE id = $1`,
+            `SELECT medication_name FROM soma_os.medications WHERE id = $1`,
             [medicationId],
           );
           expect(meds[0]!.medication_name).toBe("HTTP seed name");
@@ -447,7 +447,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           expect(res.body.error.code).toBe("PRECONDITION_FAILED");
 
           const { rows: meds } = await pool.query<{ medication_name: string }>(
-            `SELECT medication_name FROM soma_ehr.medications WHERE id = $1`,
+            `SELECT medication_name FROM soma_os.medications WHERE id = $1`,
             [medicationId],
           );
           expect(meds[0]!.medication_name).toBe("HTTP seed name");
@@ -511,7 +511,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           event_type: string;
           metadata: { domain?: string } | null;
         }>(
-          `SELECT action, outcome, event_type, metadata FROM soma_ehr.audit_log
+          `SELECT action, outcome, event_type, metadata FROM soma_os.audit_log
            WHERE resource_id = $1 ORDER BY "timestamp" DESC LIMIT 1`,
           [id],
         );

@@ -11,7 +11,7 @@
 #   SKIP_PG_WAIT=1         With SKIP_DOCKER=1: do not nc-wait on PG_WAIT_*.
 #   SKIP_MIGRATE=1        Skip migrations (still runs db:test if not skipped).
 #   SKIP_DB_CHECK=1       Skip db:test and migrate.
-#   START_CLERK_DEV=1     Also run @soma-ehr/clerk-dev on :5173 (stops when you Ctrl+C API).
+#   START_CLERK_DEV=1     Also run @soma-os/clerk-dev on :5173 (stops when you Ctrl+C API).
 #   PG_WAIT_HOST=127.0.0.1  PG_WAIT_PORT=5432  (used when SKIP_DOCKER=1 and nc is available)
 #   POSTGRES_*            Passed through to Compose (see compose.yml).
 #
@@ -94,11 +94,11 @@ db_steps() {
     echo "SKIP_DB_CHECK=1 — skipping db:test / migrate."
     return 0
   fi
-  pnpm --filter @soma-ehr/database db:test
+  pnpm --filter @soma-os/database db:test
   if [[ "$SKIP_MIGRATE" == "1" ]]; then
     echo "SKIP_MIGRATE=1 — skipping migrate."
   else
-    pnpm --filter @soma-ehr/database migrate
+    pnpm --filter @soma-os/database migrate
   fi
 }
 
@@ -111,7 +111,7 @@ cleanup_clerk() {
 }
 
 main() {
-  echo "Starting soma-ehr dev stack from ${ROOT}"
+  echo "Starting soma-os dev stack from ${ROOT}"
 
   maybe_start_postgres
 
@@ -125,13 +125,13 @@ main() {
   trap cleanup_clerk EXIT INT TERM
 
   if [[ "$START_CLERK_DEV" == "1" ]]; then
-    echo "Starting @soma-ehr/clerk-dev → http://localhost:5173 (background)"
-    pnpm --filter @soma-ehr/clerk-dev dev &
+    echo "Starting @soma-os/clerk-dev → http://localhost:5173 (background)"
+    pnpm --filter @soma-os/clerk-dev dev &
     clerk_pid=$!
   fi
 
-  echo "Starting @soma-ehr/api → http://localhost:${PORT:-3000}"
-  pnpm --filter @soma-ehr/api dev
+  echo "Starting @soma-os/api → http://localhost:${PORT:-3000}"
+  pnpm --filter @soma-os/api dev
 }
 
 main "$@"

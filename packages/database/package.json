@@ -1,5 +1,5 @@
 {
-  "name": "@soma-ehr/database",
+  "name": "@soma-os/database",
   "private": true,
   "type": "module",
   "scripts": {

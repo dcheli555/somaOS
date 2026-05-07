@@ -9,10 +9,11 @@
 
 set -euo pipefail
 
-CLERK_JWT='eyJhbGciOiJSUzI1NiIsImNhdCI6ImNsX0I3ZDRQRDExMUFBQSIsImtpZCI6Imluc18zREdWVE1LWm5CN1lqUkxGSWM4ekVIcDlFZGciLCJ0eXAiOiJKV1QifQ.eyJhenAiOiJodHRwOi8vbG9jYWxob3N0OjUxNzMiLCJleHAiOjE3NzgwOTQ1OTgsImZ2YSI6WzQ5LC0xXSwiaWF0IjoxNzc4MDk0NTM4LCJpc3MiOiJodHRwczovL2Fib3ZlLWphZ3Vhci01OS5jbGVyay5hY2NvdW50cy5kZXYiLCJuYmYiOjE3NzgwOTQ1MjgsIm8iOnsiaWQiOiJvcmdfM0RNVDdqQlZlVHFYWE9mUVg4VHM3YWM0eG9VIiwicm9sIjoibWVtYmVyIiwic2xnIjoic29tYWVoci1kZXYtMTc3ODA5MDc3Mzg3MjQ4Mzk5MCJ9LCJzaWQiOiJzZXNzXzNETVVrMEFtWTZmMnE2RWU3R2djMXJGSndkZSIsInN0cyI6ImFjdGl2ZSIsInN1YiI6InVzZXJfM0RIUzEza29pTllRdUZMUGdYUDRmTUNoWlFJIiwidiI6Mn0.DjY5LWqQa4oBli9D2xhByi_HnAkphCbYHgiNnz7_07ylUop0Sm5FoRe2n2IN9S5TDdppbMwglsn5IAJU0nqNU5Agv74lj3Ycs_QN69qxz0dpRuXINpp7rwEY2yA5OHMtCA9Z2g953eGstdW5CWOXxgqsZwnEm3PIUvM--UZgQcYUmahyBPxMO5vvoJnv1nxdINNFDMvwx6T-57OdboULn3fpgeKi4HT45RnCi3o8g2v-zn9PsdV0dSEcn1YaNC5HHYyXBk1VHzYI4uYJBdTK4T3CENosh685dv8z0ZK1BdnrgksuPXAkPZpENNgTHhx2cQLU8GoOVYFpKXAtGIr5Nw'
+CLERK_JWT='eyJhbGciOiJSUzI1NiIsImNhdCI6ImNsX0I3ZDRQRDExMUFBQSIsImtpZCI6Imluc18zREdWVE1LWm5CN1lqUkxGSWM4ekVIcDlFZGciLCJ0eXAiOiJKV1QifQ.eyJhenAiOiJodHRwOi8vbG9jYWxob3N0OjUxNzMiLCJleHAiOjE3NzgxMDEwNDEsImZ2YSI6WzE1NiwtMV0sImlhdCI6MTc3ODEwMDk4MSwiaXNzIjoiaHR0cHM6Ly9hYm92ZS1qYWd1YXItNTkuY2xlcmsuYWNjb3VudHMuZGV2IiwibmJmIjoxNzc4MTAwOTcxLCJvIjp7ImlkIjoib3JnXzNETVQ3akJWZVRxWFhPZlFYOFRzN2FjNHhvVSIsInJvbCI6Im1lbWJlciIsInNsZyI6InNvbWFlaHItZGV2LTE3NzgwOTA3NzM4NzI0ODM5OTAifSwic2lkIjoic2Vzc18zRE1VazBBbVk2ZjJxNkVlN0dnYzFyRkp3ZGUiLCJzdHMiOiJhY3RpdmUiLCJzdWIiOiJ1c2VyXzNESFMxM2tvaU5ZUXVGTFBnWFA0Zk1DaFpRSSIsInYiOjJ9.qajFHFOeOCP1II1OrDDUwySxMj98dsKVHcQw7htf5B3tHE0co1a7ChJj4YDUCuhqJObxB30N_-Stb34Zg553jqPGN_FdXVTkJ8s87bz4AJZzPzsS0WWmJZ42qx9r0Q8CWPh4sEmSKAJQNOrbigrTmS5XANOHLpn7bos9bPj3qRNYmHTWnN-L4twZW4wPGkbBjGqBW9wGRfXeV13OHmIxK98i0B__856U0lO_nCoaiJVC9q0wI_up57yVFodZGSXVBHhjPPWC9r7jGAlqsNkW6tyAMuCOlDZXeq6d1tAaifqWO6PPYU-qQzOu2SK6SpJfi8rA2T2T8Ofq-f0FzGrXAA'
 # ORG_ID='11111111-1111-4111-8111-111111111111'
 ORG_ID='org_3DMT7jBVeTqXXOfQX8Ts7ac4xoU'
-MEDICATION_ID='bea354aa-7f04-40b9-87a8-9d9f89dd3d65'
+
+MEDICATION_ID='82367ca3-7913-4e4e-8973-15395b4f1b46'
 
 BASE_URL="${BASE_URL:-http://localhost:3000}"
 
@@ -21,20 +22,20 @@ ORG="$(echo -n "${ORG_ID:?}" | tr -d '[:space:]')"
 MID="$(echo -n "${MEDICATION_ID:?}" | tr -d '[:space:]')"
 
 
-curl -sS -i -X POST "${BASE_URL:-http://localhost:3000}/api/medications" \
-  -H "Authorization: Bearer ${JWT}" \
-  -H "X-Organization-Id: ${ORG}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "patient_id": "22222222-2222-4222-8222-222222222222",
-    "medication_name": "Acetaminophen 500mg tablet"
-  }'
-
-
-# curl -sS -i \
+# curl -sS -i -X POST "${BASE_URL:-http://localhost:3000}/api/medications" \
 #   -H "Authorization: Bearer ${JWT}" \
 #   -H "X-Organization-Id: ${ORG}" \
-#   "${BASE_URL}/api/medications/${MID}"
+#   -H "Content-Type: application/json" \
+#   -d '{
+#     "patient_id": "22222222-2222-4222-8222-222222222222",
+#     "medication_name": "Acetaminophen 500mg tablet"
+#   }'
+
+
+curl -sS -i \
+  -H "Authorization: Bearer ${JWT}" \
+  -H "X-Organization-Id: ${ORG}" \
+  "${BASE_URL}/api/medications/${MID}"
 
 # Basic shape check (JWT = header.payload.signature, each base64url)
 dots="${JWT//[^.]}"

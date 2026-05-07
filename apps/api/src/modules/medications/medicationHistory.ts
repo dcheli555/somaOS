@@ -7,8 +7,8 @@ export type MedicationHistoryChangeType =
   | "restore";
 
 /**
- * Append-only row in `soma_ehr.medication_history`.
- * `priorVersion` is `soma_ehr.medications.version` immediately **before** this event (null for `create`).
+ * Append-only row in `soma_os.medication_history`.
+ * `priorVersion` is `soma_os.medications.version` immediately **before** this event (null for `create`).
  */
 export async function appendMedicationHistory(
   client: DbClient,
@@ -35,7 +35,7 @@ export async function appendMedicationHistory(
   } = params;
 
   await client.query(
-    `INSERT INTO soma_ehr.medication_history (
+    `INSERT INTO soma_os.medication_history (
       organization_id,
       medication_id,
       prior_version,

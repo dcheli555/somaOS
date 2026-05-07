@@ -7,7 +7,7 @@ Vite + React + Clerk for copying:
 
 ## Setup
 
-1. In the [Clerk Dashboard](https://dashboard.clerk.com/) for **the same application** as `@soma-ehr/api`, add **`http://localhost:5173`** under allowed origins / redirect URLs (exact dev URL Vite uses).
+1. In the [Clerk Dashboard](https://dashboard.clerk.com/) for **the same application** as `@soma-os/api`, add **`http://localhost:5173`** under allowed origins / redirect URLs (exact dev URL Vite uses).
 2. Copy env:
 
    ```bash
@@ -20,9 +20,9 @@ Vite + React + Clerk for copying:
 
    ```bash
    pnpm install
-   pnpm --filter @soma-ehr/clerk-dev dev
+   pnpm --filter @soma-os/clerk-dev dev
    ```
 
 4. Open **http://localhost:5173** → Sign in → **Refresh JWT** / **Copy**. Use **Copy org UUID** with the medication smoke-test SQL (`docs/medication-smoke-test.md`).
 
-The API continues to run with **`pnpm --filter @soma-ehr/api dev`** on port **3000**.
+The API continues to run with **`pnpm --filter @soma-os/api dev`** on port **3000**.

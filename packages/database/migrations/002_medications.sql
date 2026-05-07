@@ -2,7 +2,7 @@
 -- Base row shape follows `snippets/clinical_row_standard.sql`, then domain fields.
 -- All timestamps are TIMESTAMPTZ (UTC-capable) for audit and interoperability.
 
-CREATE TABLE soma_ehr.medications (
+CREATE TABLE soma_os.medications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   organization_id UUID NOT NULL,
@@ -53,44 +53,44 @@ CREATE TABLE soma_ehr.medications (
   )
 );
 
-COMMENT ON TABLE soma_ehr.medications IS
+COMMENT ON TABLE soma_os.medications IS
   'Patient medication list / order record; scoped by organization_id for multi-tenant isolation.';
 
-COMMENT ON COLUMN soma_ehr.medications.organization_id IS
+COMMENT ON COLUMN soma_os.medications.organization_id IS
   'Tenant identifier; pair with patient_id for all clinical queries.';
 
-COMMENT ON COLUMN soma_ehr.medications.encounter_id IS
+COMMENT ON COLUMN soma_os.medications.encounter_id IS
   'Optional encounter context when the row was authored or captured during a visit.';
 
-COMMENT ON COLUMN soma_ehr.medications.deleted_at IS
+COMMENT ON COLUMN soma_os.medications.deleted_at IS
   'Soft delete timestamp; NULL means active. Queries should filter deleted_at IS NULL.';
 
-COMMENT ON COLUMN soma_ehr.medications.deleted_by IS
+COMMENT ON COLUMN soma_os.medications.deleted_by IS
   'Actor who performed the soft delete; NULL when the row is active.';
 
-COMMENT ON COLUMN soma_ehr.medications.created_by IS
+COMMENT ON COLUMN soma_os.medications.created_by IS
   'Clerk user id or service principal (TEXT) that created the row.';
 
-COMMENT ON COLUMN soma_ehr.medications.updated_by IS
+COMMENT ON COLUMN soma_os.medications.updated_by IS
   'Clerk user id or service principal (TEXT) that last mutated the row (via API or trusted job).';
 
-COMMENT ON COLUMN soma_ehr.medications.metadata IS
+COMMENT ON COLUMN soma_os.medications.metadata IS
   'Opaque structured attributes (e.g. source system ids, formulary flags); must not replace regulated clinical fields.';
 
 CREATE INDEX idx_medications_org_patient
-  ON soma_ehr.medications (organization_id, patient_id)
+  ON soma_os.medications (organization_id, patient_id)
   WHERE deleted_at IS NULL;
 
 CREATE INDEX idx_medications_org_patient_active
-  ON soma_ehr.medications (organization_id, patient_id)
+  ON soma_os.medications (organization_id, patient_id)
   WHERE deleted_at IS NULL AND status = 'active';
 
 CREATE INDEX idx_medications_org_updated
-  ON soma_ehr.medications (organization_id, updated_at DESC)
+  ON soma_os.medications (organization_id, updated_at DESC)
   WHERE deleted_at IS NULL;
 
 -- Reusable trigger: maintain updated_at on mutable clinical tables.
-CREATE OR REPLACE FUNCTION soma_ehr.tg_set_updated_at()
+CREATE OR REPLACE FUNCTION soma_os.tg_set_updated_at()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
@@ -101,6 +101,6 @@ END;
 $$;
 
 CREATE TRIGGER trg_medications_set_updated_at
-  BEFORE UPDATE ON soma_ehr.medications
+  BEFORE UPDATE ON soma_os.medications
   FOR EACH ROW
-  EXECUTE PROCEDURE soma_ehr.tg_set_updated_at();
+  EXECUTE PROCEDURE soma_os.tg_set_updated_at();

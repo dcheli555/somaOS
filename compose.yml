@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localdev}
-      POSTGRES_DB: ${POSTGRES_DB:-soma_ehr}
+      POSTGRES_DB: ${POSTGRES_DB:-soma_os}
     volumes:
       - soma_pgdata:/var/lib/postgresql/data
     healthcheck:

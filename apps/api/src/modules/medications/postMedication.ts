@@ -50,7 +50,7 @@ export async function createMedicationForRequest(
   const {
     rows: [row],
   } = await client.query<MedicationRow>(
-    `INSERT INTO soma_ehr.medications (
+    `INSERT INTO soma_os.medications (
        organization_id,
        patient_id,
        encounter_id,

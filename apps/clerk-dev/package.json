@@ -1,5 +1,5 @@
 {
-  "name": "@soma-ehr/clerk-dev",
+  "name": "@soma-os/clerk-dev",
   "private": true,
   "type": "module",
   "scripts": {

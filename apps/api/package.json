@@ -1,5 +1,5 @@
 {
-  "name": "@soma-ehr/api",
+  "name": "@soma-os/api",
   "private": true,
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",

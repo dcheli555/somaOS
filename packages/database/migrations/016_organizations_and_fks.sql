@@ -3,7 +3,7 @@
 --
 -- Rationale: keeps Postgres joins and FKs stable if auth vendors change; external ids are explicit.
 
-CREATE TABLE soma_ehr.organizations (
+CREATE TABLE soma_os.organizations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- Clerk organization id (`org_…`); unique external binding. Non-Clerk tenants may use other prefixes.
@@ -17,37 +17,37 @@ CREATE TABLE soma_ehr.organizations (
   CONSTRAINT organizations_clerk_organization_id_unique UNIQUE (clerk_organization_id)
 );
 
-COMMENT ON TABLE soma_ehr.organizations IS
+COMMENT ON TABLE soma_os.organizations IS
   'Canonical tenant row: internal UUID (id) for all domain FKs; clerk_organization_id holds vendor org id.';
 
-COMMENT ON COLUMN soma_ehr.organizations.id IS
+COMMENT ON COLUMN soma_os.organizations.id IS
   'Internal tenant UUID used in medications, audit_log, and other domain tables.';
 
-COMMENT ON COLUMN soma_ehr.organizations.clerk_organization_id IS
+COMMENT ON COLUMN soma_os.organizations.clerk_organization_id IS
   'External Clerk organization id (org_…). Not used as a foreign key on clinical tables.';
 
 CREATE TRIGGER trg_organizations_set_updated_at
-  BEFORE UPDATE ON soma_ehr.organizations
+  BEFORE UPDATE ON soma_os.organizations
   FOR EACH ROW
-  EXECUTE PROCEDURE soma_ehr.tg_set_updated_at();
+  EXECUTE PROCEDURE soma_os.tg_set_updated_at();
 
 -- Backfill one row per distinct tenant UUID already stored on domain tables (pre-FK data).
-INSERT INTO soma_ehr.organizations (id, clerk_organization_id, name)
+INSERT INTO soma_os.organizations (id, clerk_organization_id, name)
 SELECT DISTINCT
   x.organization_id,
   'legacy:' || x.organization_id::text,
   'Migrated organization'
 FROM (
-  SELECT organization_id FROM soma_ehr.medications
+  SELECT organization_id FROM soma_os.medications
   UNION
-  SELECT organization_id FROM soma_ehr.medication_history
+  SELECT organization_id FROM soma_os.medication_history
   UNION
-  SELECT organization_id FROM soma_ehr.audit_log
+  SELECT organization_id FROM soma_os.audit_log
   WHERE organization_id IS NOT NULL
 ) x;
 
 -- Well-known local / test tenant UUIDs (integration tests, smoke scripts).
-INSERT INTO soma_ehr.organizations (id, clerk_organization_id, name)
+INSERT INTO soma_os.organizations (id, clerk_organization_id, name)
 VALUES
   (
     '00000000-0001-4000-8000-000000000001'::uuid,
@@ -61,17 +61,17 @@ VALUES
   )
 ON CONFLICT (id) DO NOTHING;
 
-ALTER TABLE soma_ehr.medications
+ALTER TABLE soma_os.medications
   ADD CONSTRAINT fk_medications_organization
-  FOREIGN KEY (organization_id) REFERENCES soma_ehr.organizations (id);
+  FOREIGN KEY (organization_id) REFERENCES soma_os.organizations (id);
 
-ALTER TABLE soma_ehr.medication_history
+ALTER TABLE soma_os.medication_history
   ADD CONSTRAINT fk_medication_history_organization
-  FOREIGN KEY (organization_id) REFERENCES soma_ehr.organizations (id);
+  FOREIGN KEY (organization_id) REFERENCES soma_os.organizations (id);
 
-ALTER TABLE soma_ehr.audit_log
+ALTER TABLE soma_os.audit_log
   ADD CONSTRAINT fk_audit_log_organization
-  FOREIGN KEY (organization_id) REFERENCES soma_ehr.organizations (id);
+  FOREIGN KEY (organization_id) REFERENCES soma_os.organizations (id);
 
 CREATE INDEX IF NOT EXISTS idx_organizations_clerk_organization_id
-  ON soma_ehr.organizations (clerk_organization_id);
+  ON soma_os.organizations (clerk_organization_id);

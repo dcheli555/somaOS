@@ -2,12 +2,12 @@
 -- snapshot MUST capture a self-contained JSON view of the medication at that point in time
 -- (healthcare-grade reconstruction for med reconciliation and investigations).
 
-CREATE TABLE soma_ehr.medication_history (
+CREATE TABLE soma_os.medication_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   organization_id UUID NOT NULL,
   medication_id UUID NOT NULL
-    REFERENCES soma_ehr.medications (id)
+    REFERENCES soma_os.medications (id)
     ON DELETE CASCADE,
 
   prior_version INTEGER NULL,
@@ -35,32 +35,32 @@ CREATE TABLE soma_ehr.medication_history (
     CHECK (snapshot_schema_version > 0)
 );
 
-COMMENT ON TABLE soma_ehr.medication_history IS
+COMMENT ON TABLE soma_os.medication_history IS
   'Append-only medication revision log; each row is an auditable point-in-time snapshot.';
 
-COMMENT ON COLUMN soma_ehr.medication_history.prior_version IS
-  'Value of soma_ehr.medications.version immediately before this history row; NULL when the event is create.';
+COMMENT ON COLUMN soma_os.medication_history.prior_version IS
+  'Value of soma_os.medications.version immediately before this history row; NULL when the event is create.';
 
-COMMENT ON COLUMN soma_ehr.medication_history.change_type IS
+COMMENT ON COLUMN soma_os.medication_history.change_type IS
   'create | update | delete | restore — which medication action produced this row.';
 
-COMMENT ON COLUMN soma_ehr.medication_history.encounter_id IS
+COMMENT ON COLUMN soma_os.medication_history.encounter_id IS
   'Encounter associated with the medication row at the time of this event.';
 
-COMMENT ON COLUMN soma_ehr.medication_history.snapshot IS
+COMMENT ON COLUMN soma_os.medication_history.snapshot IS
   'Structured JSON snapshot of the medication record at this revision; schema_version denotes interpretation.';
 
-COMMENT ON COLUMN soma_ehr.medication_history.correlation_request_id IS
+COMMENT ON COLUMN soma_os.medication_history.correlation_request_id IS
   'Correlates this history entry to an originating HTTP/API request where applicable.';
 
 CREATE INDEX idx_medication_history_org_med_created
-  ON soma_ehr.medication_history (organization_id, medication_id, created_at DESC);
+  ON soma_os.medication_history (organization_id, medication_id, created_at DESC);
 
 CREATE INDEX idx_medication_history_med_created
-  ON soma_ehr.medication_history (medication_id, created_at DESC);
+  ON soma_os.medication_history (medication_id, created_at DESC);
 
 -- Append-only: no updates or deletes (tamper-evident lineage).
-CREATE OR REPLACE FUNCTION soma_ehr.tg_prevent_medication_history_mutation()
+CREATE OR REPLACE FUNCTION soma_os.tg_prevent_medication_history_mutation()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 AS $$
@@ -73,17 +73,17 @@ END;
 $$;
 
 CREATE TRIGGER trg_medication_history_prevent_update
-  BEFORE UPDATE ON soma_ehr.medication_history
+  BEFORE UPDATE ON soma_os.medication_history
   FOR EACH ROW
-  EXECUTE PROCEDURE soma_ehr.tg_prevent_medication_history_mutation();
+  EXECUTE PROCEDURE soma_os.tg_prevent_medication_history_mutation();
 
 CREATE TRIGGER trg_medication_history_prevent_delete
-  BEFORE DELETE ON soma_ehr.medication_history
+  BEFORE DELETE ON soma_os.medication_history
   FOR EACH ROW
-  EXECUTE PROCEDURE soma_ehr.tg_prevent_medication_history_mutation();
+  EXECUTE PROCEDURE soma_os.tg_prevent_medication_history_mutation();
 
 -- Align updated_at on insert with server clock (matches medications treatment).
 CREATE TRIGGER trg_medication_history_set_updated_at_on_insert
-  BEFORE INSERT ON soma_ehr.medication_history
+  BEFORE INSERT ON soma_os.medication_history
   FOR EACH ROW
-  EXECUTE PROCEDURE soma_ehr.tg_set_updated_at();
+  EXECUTE PROCEDURE soma_os.tg_set_updated_at();

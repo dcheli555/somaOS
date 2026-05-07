@@ -104,7 +104,7 @@ export function auditPayloadHash(payload: unknown): string {
 }
 
 /**
- * Inserts one row into `soma_ehr.audit_log` using the given client (call inside a transaction when needed).
+ * Inserts one row into `soma_os.audit_log` using the given client (call inside a transaction when needed).
  */
 export async function insertAuditEvent(
   client: DbClient,
@@ -123,7 +123,7 @@ export async function insertAuditEvent(
     request.actorIp && isIP(request.actorIp) ? request.actorIp : null;
 
   await client.query(
-    `INSERT INTO soma_ehr.audit_log (
+    `INSERT INTO soma_os.audit_log (
        "timestamp",
        event_type,
        action,

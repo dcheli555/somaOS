@@ -6,11 +6,11 @@ End-to-end check that **`medications`**, **`medication_history`**, and **`audit_
 
 1. **Postgres** running; **`DATABASE_URL`** set (see repo root `.env`).
 2. **Migrations applied** (latest `packages/database/migrations/`):  
-   `pnpm --filter @soma-ehr/database migrate`
-3. **API running** (e.g. `pnpm --filter @soma-ehr/api dev`) with **`CLERK_PUBLISHABLE_KEY`** and **`CLERK_SECRET_KEY`**.
+   `pnpm --filter @soma-os/database migrate`
+3. **API running** (e.g. `pnpm --filter @soma-os/api dev`) with **`CLERK_PUBLISHABLE_KEY`** and **`CLERK_SECRET_KEY`**.
 4. A **Clerk session JWT** for a test user (**Bearer** token).
-5. A tenant row in **`soma_ehr.organizations`**: the **`id`** (UUID) must match **`medications.organization_id`** and the value you send as **`X-Organization-Id`** when it is a UUID. After migration **`016`**, dev seeds include **`00000000-0001-…`** and **`00000000-0010-…`**; for other UUIDs insert an organization first, e.g.
-   `INSERT INTO soma_ehr.organizations (id, clerk_organization_id, name) VALUES ('…'::uuid, 'legacy:…', '…') ON CONFLICT (id) DO NOTHING`.
+5. A tenant row in **`soma_os.organizations`**: the **`id`** (UUID) must match **`medications.organization_id`** and the value you send as **`X-Organization-Id`** when it is a UUID. After migration **`016`**, dev seeds include **`00000000-0001-…`** and **`00000000-0010-…`**; for other UUIDs insert an organization first, e.g.
+   `INSERT INTO soma_os.organizations (id, clerk_organization_id, name) VALUES ('…'::uuid, 'legacy:…', '…') ON CONFLICT (id) DO NOTHING`.
    When **`X-Organization-Id`** is a real Clerk **`org_*`**, the row must exist with that **`clerk_organization_id`**, or set **`SOMA_AUTO_PROVISION_ORGANIZATIONS=1`** to create it on first request.
 
 Optional: run the automated script (see below) after exporting env vars.
@@ -23,7 +23,7 @@ The API currently exposes **PUT** for updates only, so seed one row with **`psql
 
 ```sql
 -- Use the SAME organization UUID you will send in X-Organization-Id
-INSERT INTO soma_ehr.medications (
+INSERT INTO soma_os.medications (
   organization_id,
   patient_id,
   medication_name,
@@ -89,7 +89,7 @@ Run with **`psql "$DATABASE_URL"`**, substituting **`MEDICATION_ID`**:
 ```sql
 -- A) medications row updated
 SELECT id, medication_name, updated_at
-FROM soma_ehr.medications
+FROM soma_os.medications
 WHERE id = 'MEDICATION_ID'::uuid;
 
 -- B) medication_history: prior snapshot (should include OLD name in snapshot JSON)
@@ -97,7 +97,7 @@ SELECT id, medication_id,
        snapshot->>'medication_name' AS snapshot_name,
        correlation_request_id,
        created_at
-FROM soma_ehr.medication_history
+FROM soma_os.medication_history
 WHERE medication_id = 'MEDICATION_ID'::uuid
 ORDER BY created_at DESC;
 
@@ -105,7 +105,7 @@ ORDER BY created_at DESC;
 SELECT id, event_type, action, outcome, resource_type, resource_id, request_id,
        "timestamp",
        metadata->>'domain' AS metadata_domain
-FROM soma_ehr.audit_log
+FROM soma_os.audit_log
 WHERE resource_id = 'MEDICATION_ID'::uuid
 ORDER BY "timestamp" DESC
 LIMIT 5;

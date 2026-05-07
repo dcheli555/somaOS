@@ -6,7 +6,7 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1
     FROM information_schema.tables
-    WHERE table_schema = 'soma_ehr'
+    WHERE table_schema = 'soma_os'
       AND table_name = 'audit_log'
   ) THEN
     RETURN;
@@ -15,7 +15,7 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM information_schema.columns
-    WHERE table_schema = 'soma_ehr'
+    WHERE table_schema = 'soma_os'
       AND table_name = 'audit_log'
       AND column_name = 'event_type'
   ) THEN
@@ -25,27 +25,27 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1
     FROM information_schema.columns
-    WHERE table_schema = 'soma_ehr'
+    WHERE table_schema = 'soma_os'
       AND table_name = 'audit_log'
       AND column_name = 'context'
   ) THEN
     RETURN;
   END IF;
 
-  DROP TRIGGER IF EXISTS trg_audit_log_prevent_update ON soma_ehr.audit_log;
-  DROP TRIGGER IF EXISTS trg_audit_log_prevent_delete ON soma_ehr.audit_log;
-  DROP TRIGGER IF EXISTS trg_audit_log_set_updated_at_on_insert ON soma_ehr.audit_log;
+  DROP TRIGGER IF EXISTS trg_audit_log_prevent_update ON soma_os.audit_log;
+  DROP TRIGGER IF EXISTS trg_audit_log_prevent_delete ON soma_os.audit_log;
+  DROP TRIGGER IF EXISTS trg_audit_log_set_updated_at_on_insert ON soma_os.audit_log;
 
-  DROP INDEX IF EXISTS soma_ehr.idx_audit_log_org_timestamp;
-  DROP INDEX IF EXISTS soma_ehr.idx_audit_log_org_patient_timestamp;
-  DROP INDEX IF EXISTS soma_ehr.idx_audit_log_org_resource;
-  DROP INDEX IF EXISTS soma_ehr.idx_audit_log_org_actor_timestamp;
-  DROP INDEX IF EXISTS soma_ehr.idx_audit_log_request_id;
-  DROP INDEX IF EXISTS soma_ehr.idx_audit_log_recorded_at;
+  DROP INDEX IF EXISTS soma_os.idx_audit_log_org_timestamp;
+  DROP INDEX IF EXISTS soma_os.idx_audit_log_org_patient_timestamp;
+  DROP INDEX IF EXISTS soma_os.idx_audit_log_org_resource;
+  DROP INDEX IF EXISTS soma_os.idx_audit_log_org_actor_timestamp;
+  DROP INDEX IF EXISTS soma_os.idx_audit_log_request_id;
+  DROP INDEX IF EXISTS soma_os.idx_audit_log_recorded_at;
 
-  ALTER TABLE soma_ehr.audit_log RENAME TO audit_log_legacy_v1;
+  ALTER TABLE soma_os.audit_log RENAME TO audit_log_legacy_v1;
 
-  CREATE TABLE soma_ehr.audit_log (
+  CREATE TABLE soma_os.audit_log (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     "timestamp" TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -86,7 +86,7 @@ BEGIN
       CHECK (outcome IN ('success', 'failure', 'denied'))
   );
 
-  INSERT INTO soma_ehr.audit_log (
+  INSERT INTO soma_os.audit_log (
     id,
     "timestamp",
     event_type,
@@ -137,37 +137,37 @@ BEGIN
     NULL::text,
     l.context,
     COALESCE(l.recorded_at, l.created_at)
-  FROM soma_ehr.audit_log_legacy_v1 l;
+  FROM soma_os.audit_log_legacy_v1 l;
 
-  DROP TABLE soma_ehr.audit_log_legacy_v1;
+  DROP TABLE soma_os.audit_log_legacy_v1;
 
   CREATE INDEX idx_audit_log_org_timestamp
-    ON soma_ehr.audit_log (organization_id, "timestamp" DESC);
+    ON soma_os.audit_log (organization_id, "timestamp" DESC);
 
   CREATE INDEX idx_audit_log_org_patient_timestamp
-    ON soma_ehr.audit_log (organization_id, patient_id, "timestamp" DESC)
+    ON soma_os.audit_log (organization_id, patient_id, "timestamp" DESC)
     WHERE patient_id IS NOT NULL;
 
   CREATE INDEX idx_audit_log_org_resource
-    ON soma_ehr.audit_log (organization_id, resource_type, resource_id);
+    ON soma_os.audit_log (organization_id, resource_type, resource_id);
 
   CREATE INDEX idx_audit_log_org_actor_timestamp
-    ON soma_ehr.audit_log (organization_id, actor_user_id, "timestamp" DESC)
+    ON soma_os.audit_log (organization_id, actor_user_id, "timestamp" DESC)
     WHERE actor_user_id IS NOT NULL;
 
   CREATE INDEX idx_audit_log_request_id
-    ON soma_ehr.audit_log (request_id);
+    ON soma_os.audit_log (request_id);
 
   CREATE INDEX idx_audit_log_created_at
-    ON soma_ehr.audit_log (created_at DESC);
+    ON soma_os.audit_log (created_at DESC);
 
   CREATE TRIGGER trg_audit_log_prevent_update
-    BEFORE UPDATE ON soma_ehr.audit_log
+    BEFORE UPDATE ON soma_os.audit_log
     FOR EACH ROW
-    EXECUTE PROCEDURE soma_ehr.tg_prevent_audit_log_mutation();
+    EXECUTE PROCEDURE soma_os.tg_prevent_audit_log_mutation();
 
   CREATE TRIGGER trg_audit_log_prevent_delete
-    BEFORE DELETE ON soma_ehr.audit_log
+    BEFORE DELETE ON soma_os.audit_log
     FOR EACH ROW
-    EXECUTE PROCEDURE soma_ehr.tg_prevent_audit_log_mutation();
+    EXECUTE PROCEDURE soma_os.tg_prevent_audit_log_mutation();
 END $$;

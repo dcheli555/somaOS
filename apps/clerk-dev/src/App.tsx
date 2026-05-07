@@ -131,7 +131,7 @@ export default function App() {
 
       <SignedOut>
         <div className="panel">
-          <p>Sign in with the same Clerk app you configured for soma-ehr API.</p>
+          <p>Sign in with the same Clerk app you configured for somaOS API.</p>
           <SignInButton mode="modal">
             <button type="button">Sign in</button>
           </SignInButton>

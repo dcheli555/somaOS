@@ -33,7 +33,7 @@ export async function findOrganizationByInternalId(
     name: string;
   }>(
     `SELECT id, clerk_organization_id, name
-     FROM soma_ehr.organizations
+     FROM soma_os.organizations
      WHERE id = $1::uuid`,
     [organizationId],
   );
@@ -62,7 +62,7 @@ export async function findOrganizationByClerkId(
     name: string;
   }>(
     `SELECT id, clerk_organization_id, name
-     FROM soma_ehr.organizations
+     FROM soma_os.organizations
      WHERE clerk_organization_id = $1`,
     [clerkOrganizationId],
   );
@@ -94,7 +94,7 @@ export async function provisionOrganizationForClerkId(
     clerk_organization_id: string;
     name: string;
   }>(
-    `INSERT INTO soma_ehr.organizations (clerk_organization_id, name)
+    `INSERT INTO soma_os.organizations (clerk_organization_id, name)
      VALUES ($1, $2)
      RETURNING id, clerk_organization_id, name`,
     [params.clerkOrganizationId, params.name?.trim() || ""],
