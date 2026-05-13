@@ -107,7 +107,7 @@ export async function deleteMedicationForRequest(
       eventType: "medication.delete",
       action: "delete",
       outcome: "success",
-      resourceType: "medication",
+      resourceType: "Medication",
       resourceId: deleted.id,
       patientId: deleted.patient_id,
       encounterId: row.encounter_id ?? null,

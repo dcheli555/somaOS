@@ -88,8 +88,8 @@ export async function getMedicationHandler(req: Request, res: Response) {
       await insertAuditEvent(auditClient, {
         request: buildAuditRequestFromExpress(req),
         event: {
-          eventType: "VIEW",
-          action: "medication.view",
+          eventType: "medication.view",
+          action: "view",
           outcome: "success",
           resourceType: "MedicationStatement",
           resourceId: row.id,

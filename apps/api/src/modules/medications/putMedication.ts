@@ -303,7 +303,7 @@ export async function updateMedicationForRequest(
       eventType: "medication.update",
       action: "update",
       outcome: "success",
-      resourceType: "medication",
+      resourceType: "Medication",
       resourceId: updated.id,
       patientId: updated.patient_id,
       encounterId: updated.encounter_id ?? null,

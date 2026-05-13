@@ -181,3 +181,10 @@ FROM soma_os.organizations AS o
 WHERE o.clerk_organization_id = 'org_3DMT7jBVeTqXXOfQX8Ts7ac4xoU';
 
 0e8e901f-ce34-4a92-9056-3cb621995f4d
+
+
+{"http": {
+  "path": "/api/medications/927ca6ef-95a4-4ab5-b675-65d4be6b1a96",
+   "method": "DELETE"}, "domain": "medications.delete", 
+   
+   "resource": {"id": "927ca6ef-95a4-4ab5-b675-65d4be6b1a96", "type": "medication"}, "schemaVersion": 1}

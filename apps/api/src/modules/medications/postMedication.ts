@@ -133,7 +133,7 @@ export async function createMedicationForRequest(
       eventType: "medication.create",
       action: "create",
       outcome: "success",
-      resourceType: "medication",
+      resourceType: "Medication",
       resourceId: row.id,
       patientId: row.patient_id,
       encounterId: row.encounter_id ?? null,

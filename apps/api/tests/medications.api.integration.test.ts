@@ -407,14 +407,14 @@ describe.skipIf(!process.env.DATABASE_URL)(
             `SELECT event_type, action, outcome, resource_type, resource_id, patient_id,
                     organization_id, actor_user_id, request_id
              FROM soma_os.audit_log
-             WHERE resource_id = $1 AND event_type = 'VIEW'
+             WHERE resource_id = $1 AND event_type = 'medication.view'
              ORDER BY "timestamp" DESC
              LIMIT 1`,
             [medicationId],
           );
           expect(audit).toBeDefined();
-          expect(audit!.event_type).toBe("VIEW");
-          expect(audit!.action).toBe("medication.view");
+          expect(audit!.event_type).toBe("medication.view");
+          expect(audit!.action).toBe("view");
           expect(audit!.outcome).toBe("success");
           expect(audit!.resource_type).toBe("MedicationStatement");
           expect(audit!.patient_id).toBe(PATIENT_ID);
