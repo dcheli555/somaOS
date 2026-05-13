@@ -5,7 +5,7 @@ import { requireTenantMembership } from "../middleware/requireTenantMembership";
 import { deleteMedicationHandler } from "../modules/medications/deleteMedication";
 import { getMedicationHandler } from "../modules/medications/getMedication";
 import { postMedicationHandler } from "../modules/medications/postMedication";
-import { putMedicationHandler } from "../modules/medications/putMedication";
+import { patchMedicationHandler, putMedicationHandler } from "../modules/medications/putMedication";
 
 function medicationResourceRouter(): Router {
   const router = Router();
@@ -13,6 +13,7 @@ function medicationResourceRouter(): Router {
   router.get("/medications/:id", getMedicationHandler);
   router.delete("/medications/:id", deleteMedicationHandler);
   router.put("/medications/:id", putMedicationHandler);
+  router.patch("/medications/:id", patchMedicationHandler);
   return router;
 }
 

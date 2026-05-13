@@ -41,6 +41,36 @@ export const medicationUpdateBodySchema = z
   })
   .strict();
 
+export const medicationFullReplaceBodySchema = z
+  .object({
+    medication_name: z.string().min(1),
+    rxnorm_cui: z.string().nullable(),
+    ndc_10: z.string().nullable(),
+    ndc_11: z.string().nullable(),
+    dose_text: z.string().nullable(),
+    route: z.string().nullable(),
+    form: z.string().nullable(),
+    strength: z.string().nullable(),
+    frequency_text: z.string().nullable(),
+    sig_text: z.string().nullable(),
+    status: z.enum([
+      "active",
+      "on_hold",
+      "completed",
+      "discontinued",
+      "entered_in_error",
+      "unknown",
+    ]),
+    start_at: z.string().datetime({ offset: true }).nullable(),
+    end_at: z.string().datetime({ offset: true }).nullable(),
+    metadata: z.record(z.string(), z.unknown()),
+  })
+  .strict();
+
+export type MedicationFullReplaceBody = z.infer<
+  typeof medicationFullReplaceBodySchema
+>;
+
 export type MedicationUpdateBody = z.infer<typeof medicationUpdateBodySchema>;
 
 export interface MedicationRow {
@@ -153,14 +183,16 @@ export function serializeMedication(row: MedicationRow) {
   };
 }
 
-type ParsedPatch = z.infer<typeof medicationUpdateBodySchema>;
+type ParsedPartialPatch = z.infer<typeof medicationUpdateBodySchema>;
+type ParsedFullReplace = z.infer<typeof medicationFullReplaceBodySchema>;
+type MutationPatchPayload = ParsedPartialPatch | ParsedFullReplace;
 
 function buildUpdate(
-  patch: ParsedPatch,
+  patch: MutationPatchPayload,
 ): { fragments: string[]; values: unknown[] } {
   const entries = Object.entries(patch).filter(([, v]) => v !== undefined) as [
-    keyof ParsedPatch,
-    ParsedPatch[keyof ParsedPatch],
+    keyof MutationPatchPayload,
+    MutationPatchPayload[keyof MutationPatchPayload],
   ][];
 
   const fragments: string[] = [];
@@ -194,7 +226,8 @@ export async function updateMedicationForRequest(
     actorUserId: string;
     requestId: string;
     expectedVersion: number;
-    patch: ParsedPatch;
+    patch: MutationPatchPayload;
+    auditMetadataDomain: string;
     req: Request;
   },
 ): Promise<MedicationRow> {
@@ -205,6 +238,7 @@ export async function updateMedicationForRequest(
     requestId,
     expectedVersion,
     patch,
+    auditMetadataDomain,
     req,
   } = params;
 
@@ -313,7 +347,7 @@ export async function updateMedicationForRequest(
     },
     metadata: {
       schemaVersion: 1,
-      domain: "medications.put",
+      domain: auditMetadataDomain,
       http: {
         method: req.method,
         path: req.originalUrl ?? req.url,
@@ -325,32 +359,40 @@ export async function updateMedicationForRequest(
   return updated;
 }
 
-export async function putMedicationHandler(req: Request, res: Response) {
-  const idParsed = idParamSchema.safeParse(req.params.id);
-  if (!idParsed.success) {
+function respondMedicationMutationError(res: Response, req: Request, err: unknown): void {
+  const e = err as { code?: string; message?: string } & Error;
+
+  if (e.code === "MEDICATION_NOT_FOUND") {
     sendMedicationApiError(
       res,
-      400,
-      "INVALID_ID",
-      "Invalid medication id (expected UUID)",
+      404,
+      "NOT_FOUND",
+      "Medication not found",
       req.context.requestId,
     );
     return;
   }
-
-  const bodyParsed = medicationUpdateBodySchema.safeParse(req.body);
-  if (!bodyParsed.success) {
+  if (e.code === "ORGANIZATION_FORBIDDEN") {
     sendMedicationApiError(
       res,
-      400,
-      "INVALID_BODY",
-      "Invalid request body",
+      403,
+      "FORBIDDEN",
+      "Forbidden for this organization",
       req.context.requestId,
     );
     return;
   }
-
-  if (Object.keys(bodyParsed.data).length === 0) {
+  if (e.code === "PRECONDITION_FAILED") {
+    sendMedicationApiError(
+      res,
+      412,
+      "PRECONDITION_FAILED",
+      "The resource has been modified. Refresh and try again.",
+      req.context.requestId,
+    );
+    return;
+  }
+  if (e.code === "EMPTY_PATCH") {
     sendMedicationApiError(
       res,
       400,
@@ -361,6 +403,35 @@ export async function putMedicationHandler(req: Request, res: Response) {
     return;
   }
 
+  const pgCode = (err as { code?: string }).code;
+  if (pgCode === "23514") {
+    sendMedicationApiError(
+      res,
+      400,
+      "CONSTRAINT_VIOLATION",
+      "Update violates data constraints (e.g. date range or status)",
+      req.context.requestId,
+    );
+    return;
+  }
+
+  console.error(err);
+  sendMedicationApiError(
+    res,
+    500,
+    "INTERNAL_ERROR",
+    "Internal server error",
+    req.context.requestId,
+  );
+}
+
+async function runMedicationMutation(
+  req: Request,
+  res: Response,
+  medicationId: string,
+  patch: MutationPatchPayload,
+  auditMetadataDomain: string,
+) {
   const organizationId = req.context.organizationId;
   if (!organizationId) {
     sendMedicationApiError(
@@ -412,12 +483,13 @@ export async function putMedicationHandler(req: Request, res: Response) {
   try {
     const updated = await withTransaction((client) =>
       updateMedicationForRequest(client, {
-        medicationId: idParsed.data,
+        medicationId,
         organizationId,
         actorUserId: userId,
         requestId: req.context.requestId,
         expectedVersion,
-        patch: bodyParsed.data,
+        patch,
+        auditMetadataDomain,
         req,
       }),
     );
@@ -425,68 +497,87 @@ export async function putMedicationHandler(req: Request, res: Response) {
     res.setHeader("ETag", toEtag(updated.version));
     res.json(serializeMedication(updated));
   } catch (err) {
-    const e = err as { code?: string; message?: string } & Error;
+    respondMedicationMutationError(res, req, err);
+  }
+}
 
-    if (e.code === "MEDICATION_NOT_FOUND") {
-      sendMedicationApiError(
-        res,
-        404,
-        "NOT_FOUND",
-        "Medication not found",
-        req.context.requestId,
-      );
-      return;
-    }
-    if (e.code === "ORGANIZATION_FORBIDDEN") {
-      sendMedicationApiError(
-        res,
-        403,
-        "FORBIDDEN",
-        "Forbidden for this organization",
-        req.context.requestId,
-      );
-      return;
-    }
-    if (e.code === "PRECONDITION_FAILED") {
-      sendMedicationApiError(
-        res,
-        412,
-        "PRECONDITION_FAILED",
-        "The resource has been modified. Refresh and try again.",
-        req.context.requestId,
-      );
-      return;
-    }
-    if (e.code === "EMPTY_PATCH") {
-      sendMedicationApiError(
-        res,
-        400,
-        "EMPTY_PATCH",
-        "No updatable fields provided",
-        req.context.requestId,
-      );
-      return;
-    }
-
-    const pgCode = (err as { code?: string }).code;
-    if (pgCode === "23514") {
-      sendMedicationApiError(
-        res,
-        400,
-        "CONSTRAINT_VIOLATION",
-        "Update violates data constraints (e.g. date range or status)",
-        req.context.requestId,
-      );
-      return;
-    }
-
-    console.error(err);
+/** Full replacement (`PUT`): every mutable field must be sent (FHIR-style update semantics). */
+export async function putMedicationHandler(req: Request, res: Response) {
+  const idParsed = idParamSchema.safeParse(req.params.id);
+  if (!idParsed.success) {
     sendMedicationApiError(
       res,
-      500,
-      "INTERNAL_ERROR",
-      "Internal server error",
+      400,
+      "INVALID_ID",
+      "Invalid medication id (expected UUID)",
       req.context.requestId,
     );
+    return;
   }
+
+  const bodyParsed = medicationFullReplaceBodySchema.safeParse(req.body);
+  if (!bodyParsed.success) {
+    sendMedicationApiError(
+      res,
+      400,
+      "INVALID_BODY",
+      "Invalid request body",
+      req.context.requestId,
+    );
+    return;
+  }
+
+  await runMedicationMutation(
+    req,
+    res,
+    idParsed.data,
+    bodyParsed.data,
+    "medications.put",
+  );
+}
+
+/** Partial update (`PATCH`): only supplied fields change. */
+export async function patchMedicationHandler(req: Request, res: Response) {
+  const idParsed = idParamSchema.safeParse(req.params.id);
+  if (!idParsed.success) {
+    sendMedicationApiError(
+      res,
+      400,
+      "INVALID_ID",
+      "Invalid medication id (expected UUID)",
+      req.context.requestId,
+    );
+    return;
+  }
+
+  const bodyParsed = medicationUpdateBodySchema.safeParse(req.body);
+  if (!bodyParsed.success) {
+    sendMedicationApiError(
+      res,
+      400,
+      "INVALID_BODY",
+      "Invalid request body",
+      req.context.requestId,
+    );
+    return;
+  }
+
+  if (Object.keys(bodyParsed.data).length === 0) {
+    sendMedicationApiError(
+      res,
+      400,
+      "EMPTY_PATCH",
+      "No updatable fields provided",
+      req.context.requestId,
+    );
+    return;
+  }
+
+  await runMedicationMutation(
+    req,
+    res,
+    idParsed.data,
+    bodyParsed.data,
+    "medications.patch",
+  );
 }

@@ -11,7 +11,10 @@ import {
 } from "vitest";
 import { deleteMedicationForRequest } from "../src/modules/medications/deleteMedication";
 import { toEtag } from "../src/modules/medications/etag";
-import { updateMedicationForRequest } from "../src/modules/medications/putMedication";
+import {
+  updateMedicationForRequest,
+  type MedicationFullReplaceBody,
+} from "../src/modules/medications/putMedication";
 import {
   createMedicationsIntegrationApp,
   pool,
@@ -43,9 +46,30 @@ function stubLegacyClerkOrgBinding(internalOrganizationId: string): string {
   return `legacy:${internalOrganizationId}`;
 }
 
+function fullMedicationReplaceForSeed(
+  medicationName = "HTTP seed name",
+): MedicationFullReplaceBody {
+  return {
+    medication_name: medicationName,
+    rxnorm_cui: null,
+    ndc_10: null,
+    ndc_11: null,
+    dose_text: null,
+    route: null,
+    form: null,
+    strength: null,
+    frequency_text: null,
+    sig_text: null,
+    status: "active",
+    start_at: null,
+    end_at: null,
+    metadata: {},
+  };
+}
+
 function stubMedicationTxRequest(init: {
   medicationId: string;
-  method: "PUT" | "DELETE";
+  method: "PATCH" | "PUT" | "DELETE";
   organizationId?: string;
   clerkOrganizationId?: string;
   requestId: string;
@@ -81,7 +105,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
   "Medications API (integration)",
   () => {
     describe("DB layer (single connection + ROLLBACK)", () => {
-      it("PUT: medications + medication_history + audit_log written together", async () => {
+      it("PATCH (DB): medications + medication_history + audit_log written together", async () => {
         const client = await pool.connect();
         const requestId = randomUUID();
 
@@ -101,7 +125,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
           const correlationId = randomUUID();
           const req = stubMedicationTxRequest({
             medicationId,
-            method: "PUT",
+            method: "PATCH",
             organizationId: ORG_A,
             requestId,
             correlationId,
@@ -114,6 +138,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
             requestId,
             expectedVersion: 1,
             patch: { medication_name: "Updated in transaction test" },
+            auditMetadataDomain: "medications.patch",
             req,
           });
 
@@ -182,7 +207,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         }
       });
 
-      it("PUT rejects stale expectedVersion (PRECONDITION_FAILED)", async () => {
+      it("PATCH rejects stale expectedVersion (PRECONDITION_FAILED)", async () => {
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
@@ -205,9 +230,10 @@ describe.skipIf(!process.env.DATABASE_URL)(
               requestId: rid,
               expectedVersion: 99,
               patch: { medication_name: "Should not apply" },
+              auditMetadataDomain: "medications.patch",
               req: stubMedicationTxRequest({
                 medicationId,
-                method: "PUT",
+                method: "PATCH",
                 requestId: rid,
               }),
             }),
@@ -222,7 +248,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         }
       });
 
-      it("PUT succeeds when expectedVersion matches current row", async () => {
+      it("PATCH succeeds when expectedVersion matches current row", async () => {
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
@@ -245,9 +271,10 @@ describe.skipIf(!process.env.DATABASE_URL)(
             requestId: rid,
             expectedVersion: 1,
             patch: { dose_text: "5mg" },
+            auditMetadataDomain: "medications.patch",
             req: stubMedicationTxRequest({
               medicationId,
-              method: "PUT",
+              method: "PATCH",
               requestId: rid,
             }),
           });
@@ -264,7 +291,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
         }
       });
 
-      it("DELETE after PUT appends delete history and soft-deletes", async () => {
+      it("DELETE after PATCH appends delete history and soft-deletes", async () => {
         const client = await pool.connect();
         try {
           await client.query("BEGIN");
@@ -287,9 +314,10 @@ describe.skipIf(!process.env.DATABASE_URL)(
             requestId: putRid,
             expectedVersion: 1,
             patch: { medication_name: "Second version" },
+            auditMetadataDomain: "medications.patch",
             req: stubMedicationTxRequest({
               medicationId,
-              method: "PUT",
+              method: "PATCH",
               requestId: putRid,
             }),
           });
@@ -429,9 +457,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
           expect(hist.length).toBe(0);
         });
 
-        it("PUT returns 403 when X-Organization-Id does not match", async () => {
+        it("PATCH returns 403 when X-Organization-Id does not match", async () => {
           const res = await request(app)
-            .put(`/api/medications/${medicationId}`)
+            .patch(`/api/medications/${medicationId}`)
             .set("X-Organization-Id", ORG_B)
             .set("If-Match", toEtag(1))
             .send({ medication_name: "Should not apply" });
@@ -451,9 +479,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
           expect(meds[0]!.medication_name).toBe("HTTP seed name");
         });
 
-        it("PUT returns 428 without If-Match", async () => {
+        it("PATCH returns 428 without If-Match", async () => {
           const res = await request(app)
-            .put(`/api/medications/${medicationId}`)
+            .patch(`/api/medications/${medicationId}`)
             .set("X-Organization-Id", ORG_A)
             .send({ medication_name: "Nope" });
 
@@ -462,9 +490,41 @@ describe.skipIf(!process.env.DATABASE_URL)(
           expect(res.body.error.requestId).toBeTruthy();
         });
 
-        it("PUT returns 400 for malformed If-Match", async () => {
+        it("PUT returns 428 without If-Match (requires full replacement body)", async () => {
           const res = await request(app)
             .put(`/api/medications/${medicationId}`)
+            .set("X-Organization-Id", ORG_A)
+            .send(fullMedicationReplaceForSeed("Full body no etag"));
+
+          expect(res.status).toBe(428);
+          expect(res.body.error.code).toBe("PRECONDITION_REQUIRED");
+        });
+
+        it("PUT returns INVALID_BODY when body omits mutable fields (partial shape)", async () => {
+          const res = await request(app)
+            .put(`/api/medications/${medicationId}`)
+            .set("X-Organization-Id", ORG_A)
+            .set("If-Match", toEtag(1))
+            .send({ medication_name: "Only partial — use PATCH" });
+
+          expect(res.status).toBe(400);
+          expect(res.body.error.code).toBe("INVALID_BODY");
+        });
+
+        it("PATCH returns 400 EMPTY_PATCH for empty object body", async () => {
+          const res = await request(app)
+            .patch(`/api/medications/${medicationId}`)
+            .set("X-Organization-Id", ORG_A)
+            .set("If-Match", toEtag(1))
+            .send({});
+
+          expect(res.status).toBe(400);
+          expect(res.body.error.code).toBe("EMPTY_PATCH");
+        });
+
+        it("PATCH returns 400 for malformed If-Match", async () => {
+          const res = await request(app)
+            .patch(`/api/medications/${medicationId}`)
             .set("X-Organization-Id", ORG_A)
             .set("If-Match", "not-an-etag")
             .send({ medication_name: "Nope" });
@@ -473,9 +533,9 @@ describe.skipIf(!process.env.DATABASE_URL)(
           expect(res.body.error.code).toBe("IF_MATCH_INVALID");
         });
 
-        it("PUT returns 412 when If-Match version is stale", async () => {
+        it("PATCH returns 412 when If-Match version is stale", async () => {
           const res = await request(app)
-            .put(`/api/medications/${medicationId}`)
+            .patch(`/api/medications/${medicationId}`)
             .set("X-Organization-Id", ORG_A)
             .set("If-Match", toEtag(2))
             .send({ medication_name: "Nope" });
@@ -497,12 +557,12 @@ describe.skipIf(!process.env.DATABASE_URL)(
           .put(`/api/medications/${fakeId}`)
           .set("X-Organization-Id", ORG_A)
           .set("If-Match", toEtag(1))
-          .send({ medication_name: "Nope" });
+          .send(fullMedicationReplaceForSeed("Nobody"));
 
         expect(res.status).toBe(404);
       });
 
-      it("HTTP PUT with matching If-Match returns updated body and new ETag", async () => {
+      it("HTTP PUT replaces full resource when If-Match matches", async () => {
         const post = await request(app)
           .post("/api/medications")
           .set("X-Organization-Id", ORG_A)
@@ -518,11 +578,60 @@ describe.skipIf(!process.env.DATABASE_URL)(
           .put(`/api/medications/${id}`)
           .set("X-Organization-Id", ORG_A)
           .set("If-Match", toEtag(1))
-          .send({ medication_name: "Concurrency HTTP v2" });
+          .send(fullMedicationReplaceForSeed("Concurrency HTTP v2"));
 
         expect(put.status).toBe(200);
         expect(put.body.version).toBe(2);
         expect(put.headers.etag).toBe(toEtag(2));
+        expect(put.body.medication_name).toBe("Concurrency HTTP v2");
+
+        const {
+          rows: [audit],
+        } = await pool.query<{ metadata: { domain?: string } | null }>(
+          `SELECT metadata FROM soma_os.audit_log
+           WHERE resource_id = $1 AND event_type = 'medication.update'
+           ORDER BY "timestamp" DESC LIMIT 1`,
+          [id],
+        );
+        expect(audit!.metadata?.domain).toBe("medications.put");
+
+        await purgeMedicationRowForTest(id);
+      });
+
+      it("HTTP PATCH updates only supplied fields", async () => {
+        const post = await request(app)
+          .post("/api/medications")
+          .set("X-Organization-Id", ORG_A)
+          .send({
+            patient_id: PATIENT_ID,
+            medication_name: "Patch subset",
+          });
+        expect(post.status).toBe(201);
+        const id = post.body.id as string;
+
+        const patchRes = await request(app)
+          .patch(`/api/medications/${id}`)
+          .set("X-Organization-Id", ORG_A)
+          .set("If-Match", toEtag(1))
+          .send({ dose_text: "20mg", rxnorm_cui: "429503" });
+
+        expect(patchRes.status).toBe(200);
+        expect(patchRes.body.medication_name).toBe("Patch subset");
+        expect(patchRes.body.dose_text).toBe("20mg");
+        expect(patchRes.body.rxnorm_cui).toBe("429503");
+        expect(patchRes.body.version).toBe(2);
+
+        const {
+          rows: [audit],
+        } = await pool.query<{ metadata: { domain?: string } | null }>(
+          `SELECT metadata FROM soma_os.audit_log
+           WHERE resource_id = $1 AND event_type = 'medication.update'
+           ORDER BY "timestamp" DESC LIMIT 1`,
+          [id],
+        );
+        expect(audit!.metadata?.domain).toBe("medications.patch");
+
+        await purgeMedicationRowForTest(id);
       });
 
       it("POST returns ETag v1 tied to row version", async () => {

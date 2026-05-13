@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Medications API smoke: POST -> GET -> PUT -> GET -> DELETE
+# Medications API smoke: POST -> GET -> PATCH (partial) -> GET -> DELETE
+# PATCH changes a subset of fields; PUT requires all mutable fields (full replacement).
 #
 # Prerequisites: jq, curl. API running; valid Clerk Bearer token.
 # ORG_ID: internal tenant UUID sent as X-Organization-Id, or Clerk org_* if your middleware resolves it.
@@ -121,14 +122,14 @@ ETAG="$(etag_from_headers)"
 echo "(ETag ${ETAG})"
 
 echo ""
-echo "=== 3. PUT ${API}/medications/${MEDICATION_ID} ==="
+echo "=== 3. PATCH ${API}/medications/${MEDICATION_ID} (partial update) ==="
 rm -f "${HDR}" "${BODY}"
 code="$(
   curl -sS -o "${BODY}" -D "${HDR}" -w "%{http_code}" "${req_headers[@]}" \
     -H "Content-Type: application/json" \
     -H "If-Match: ${ETAG}" \
-    -X PUT "${API}/medications/${MEDICATION_ID}" \
-    -d '{"dose_text":"12.5MG","rxnorm_cui":"429503", "strength": "12.5MG"}'
+    -X PATCH "${API}/medications/${MEDICATION_ID}" \
+    -d '{"dose_text":"12.5MG","rxnorm_cui":"429503","strength":"12.5MG"}'
 )"
 echo "HTTP ${code}"
 if [[ "${code}" != "200" ]]; then
@@ -141,7 +142,7 @@ VERSION="$(jq -r '.version' "${BODY}")"
 echo "Updated version=${VERSION} etag=${ETAG}"
 
 echo ""
-echo "=== 4. GET ${API}/medications/${MEDICATION_ID} (after PUT) ==="
+echo "=== 4. GET ${API}/medications/${MEDICATION_ID} (after PATCH) ==="
 rm -f "${HDR}" "${BODY}"
 code="$(
   curl -sS -o "${BODY}" -D "${HDR}" -w "%{http_code}" "${req_headers[@]}" \
@@ -166,15 +167,16 @@ if [[ "${code}" != "204" ]]; then
   [[ -s "${BODY}" ]] && cat "${BODY}" >&2
   exit 1
 fi
-echo "=== 6. GET ${API}/medications/${MEDICATION_ID} (after PUT) ==="
+echo ""
+echo "=== 6. GET ${API}/medications/${MEDICATION_ID} (expect 404 soft-deleted) ==="
 rm -f "${HDR}" "${BODY}"
 code="$(
   curl -sS -o "${BODY}" -D "${HDR}" -w "%{http_code}" "${req_headers[@]}" \
     -X GET "${API}/medications/${MEDICATION_ID}"
 )"
 echo "HTTP ${code}"
-jq . "${BODY}"
-[[ "${code}" == "200" ]] || exit 1
-ETAG="$(etag_from_headers)"
-echo "(ETag ${ETAG})"
+if [[ "${code}" != "404" ]]; then
+  cat "${BODY}" >&2
+  exit 1
+fi
 echo "Done."
