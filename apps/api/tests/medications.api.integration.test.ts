@@ -390,6 +390,43 @@ describe.skipIf(!process.env.DATABASE_URL)(
           expect(res.body.version).toBe(1);
           expect(res.headers.etag).toBe(toEtag(1));
           expect(res.headers.etag).not.toMatch(/^"\d{10,}"$/);
+
+          const {
+            rows: [audit],
+          } = await pool.query<{
+            event_type: string;
+            action: string;
+            outcome: string;
+            resource_type: string;
+            resource_id: string;
+            patient_id: string | null;
+            organization_id: string | null;
+            actor_user_id: string | null;
+            request_id: string;
+          }>(
+            `SELECT event_type, action, outcome, resource_type, resource_id, patient_id,
+                    organization_id, actor_user_id, request_id
+             FROM soma_os.audit_log
+             WHERE resource_id = $1 AND event_type = 'VIEW'
+             ORDER BY "timestamp" DESC
+             LIMIT 1`,
+            [medicationId],
+          );
+          expect(audit).toBeDefined();
+          expect(audit!.event_type).toBe("VIEW");
+          expect(audit!.action).toBe("medication.view");
+          expect(audit!.outcome).toBe("success");
+          expect(audit!.resource_type).toBe("MedicationStatement");
+          expect(audit!.patient_id).toBe(PATIENT_ID);
+          expect(audit!.organization_id).toBe(ORG_A);
+          expect(audit!.actor_user_id).toBe(TEST_ACTOR_USER_ID);
+          expect(audit!.request_id).toBeTruthy();
+
+          const { rows: hist } = await pool.query(
+            `SELECT 1 FROM soma_os.medication_history WHERE medication_id = $1`,
+            [medicationId],
+          );
+          expect(hist.length).toBe(0);
         });
 
         it("PUT returns 403 when X-Organization-Id does not match", async () => {

@@ -1,6 +1,10 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { pool } from "../../db/pool";
+import {
+  buildAuditRequestFromExpress,
+  insertAuditEvent,
+} from "../../services/auditService";
 import { toEtag } from "./etag";
 import { sendMedicationApiError } from "./medicationApiError";
 import type { MedicationRow } from "./putMedication";
@@ -71,6 +75,38 @@ export async function getMedicationHandler(req: Request, res: Response) {
         req.context.requestId,
       );
       return;
+    }
+
+    /*
+     * Access / disclosure audit belongs in audit_log only: PHI was displayed to an actor who
+     * was allowed to fetch it (auth + tenant middleware already succeeded). medication_history is
+     * reserved for persisted clinical mutations (create/update/delete snapshots), not passive reads—
+     * mixing reads there would inflate history and blur "what changed in the chart" semantics.
+     */
+    const auditClient = await pool.connect();
+    try {
+      await insertAuditEvent(auditClient, {
+        request: buildAuditRequestFromExpress(req),
+        event: {
+          eventType: "VIEW",
+          action: "medication.view",
+          outcome: "success",
+          resourceType: "MedicationStatement",
+          resourceId: row.id,
+          patientId: row.patient_id,
+          encounterId: row.encounter_id ?? null,
+        },
+        metadata: {
+          domain: "medications.get",
+          http: {
+            method: req.method,
+            path: req.originalUrl ?? req.url,
+          },
+          resource: { type: "MedicationStatement", id: row.id },
+        },
+      });
+    } finally {
+      auditClient.release();
     }
 
     res.setHeader("ETag", toEtag(row.version));

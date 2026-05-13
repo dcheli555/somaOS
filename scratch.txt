@@ -154,3 +154,30 @@ RETURNING id, organization_id, patient_id;
 
   7dde986a-a550-43bb-8616-6b736efe1b50 | 11111111-1111-4111-8111-111111111111 | bea354aa-7f04-40b9-87a8-9d9f89dd3d65 | {"id": "bea354aa-7f04-40b9-87a8-9d9f89dd3d65", "form": "Tablet", "route": "Oral", "end_at": null, "ndc_10": null, "ndc_11": null, "status": "active", "metadata": {}, "sig_text": null, "start_at": null, "strength": "200 mg", "dose_text": null, "created_at": "2026-05-05T18:04:25.797Z", "patient_id": "22222222-2222-4222-8222-222222222222", "rxnorm_cui": null, "updated_at": "2026-05-05T18:04:25.797Z", "frequency_text": null, "medication_name": "Ibuprofen 200 mg", "organization_id": "11111111-1111-4111-8111-111111111111"} |                       1 |               | 4e80fdcc-1bf8-4e2b-88f3-81033361eaf1 | 2026-05-05 18:29:04.368774+00 | 2026-05-05 18:29:04
 .368774+00
+
+
+
+INSERT INTO soma_os.organizations (clerk_organization_id, name)
+VALUES (
+  'org_3DMT7jBVeTqXXOfQX8Ts7ac4xoU',
+  'SOMA Rural Clinic'
+);
+
+
+INSERT INTO soma_os.medications (
+  organization_id,
+  patient_id,
+  created_by,
+  updated_by,
+  medication_name
+)
+SELECT
+  o.id,
+  gen_random_uuid(),           -- replace with real patient UUID
+  'user_3DHS13koiNYQuFLPgXP4fMChZQI',             -- replace with Clerk user id
+  'user_dev_seed',
+  'hydroCHLOROthiazide'
+FROM soma_os.organizations AS o
+WHERE o.clerk_organization_id = 'org_3DMT7jBVeTqXXOfQX8Ts7ac4xoU';
+
+0e8e901f-ce34-4a92-9056-3cb621995f4d
